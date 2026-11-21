@@ -24,6 +24,8 @@ def test_extension_id_matches_chrome_algorithm():
     key = install.extension_key()
     ext_id = install.extension_id(key)
     assert len(ext_id) == 32 and set(ext_id) <= set("abcdefghijklmnop")
+    # The ID Chromium assigned when it loaded extension/ (checked in the browser tests).
+    assert ext_id == "okhhjehfojbhfinihjkgjjecmapclkan"
 
 
 def test_install_writes_launcher_and_manifests(fake_home):

@@ -1,0 +1,88 @@
+<!doctype html>
+<!-- Mock of www.perplexity.ai's structure for offline testing, served AS
+     https://www.perplexity.ai/ by the tests. A Lexical-style contenteditable
+     #ask-input, a Submit button, an attach button that opens a DETACHED
+     <input type=file> (never added to the document, like some upload
+     libraries do), a drop zone, and answers in #markdown-content-N.prose. -->
+<html lang="en" class="dark">
+<head>
+  <meta charset="utf-8">
+  <title>Perplexity (mock)</title>
+  <style>
+    body { font-family: -apple-system, sans-serif; margin: 0; color: #e8e8e6; background: #191a1a; }
+    main { max-width: 760px; margin: 0 auto; padding: 24px; }
+    #ask-input { min-height: 40px; border: 1px solid #444; border-radius: 12px; padding: 10px 14px; }
+    #drop-zone.over { outline: 2px dashed #20b8cd; }
+  </style>
+</head>
+<body>
+<div id="root">
+  <main id="drop-zone">
+    <h1 class="group/query">What is a DLP tool?</h1>
+    <div id="markdown-content-0" class="prose dark:prose-invert">
+      <p>Data loss prevention software detects and blocks sensitive data leaving an organisation.</p>
+      <ul><li>Endpoint agents</li><li>Network monitors</li></ul>
+    </div>
+    <div class="ask-box">
+      <div contenteditable="true" role="textbox" id="ask-input" data-lexical-editor="true"><p><br></p></div>
+      <button type="button" aria-label="Attach">📎</button>
+      <button type="button" aria-label="Submit" data-testid="submit-button">→</button>
+    </div>
+    <h3>Sent</h3><ol id="sent-log"></ol>
+    <h3>Uploaded</h3><ol id="upload-log"></ol>
+  </main>
+</div>
+<script>
+(() => {
+  const root = document.getElementById("root");
+  const editor = document.getElementById("ask-input");
+  const zone = document.getElementById("drop-zone");
+
+  async function digest(file) {
+    const buf = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+    return [...new Uint8Array(buf)].slice(0, 6).map(b => b.toString(16).padStart(2, "0")).join("");
+  }
+  async function upload(files, via) {
+    for (const f of files) {
+      const li = document.createElement("li");
+      li.textContent = `${f.name}|${f.size}|${await digest(f)}|${via}`;
+      document.getElementById("upload-log").appendChild(li);
+    }
+  }
+  function send() {
+    const text = editor.innerText.trim();
+    if (!text) return;
+    const li = document.createElement("li");
+    li.textContent = text;
+    document.getElementById("sent-log").appendChild(li);
+    editor.innerHTML = "<p><br></p>";
+  }
+
+  editor.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); }
+  });
+  root.addEventListener("click", (e) => {
+    if (e.target.closest('button[aria-label="Submit"]')) send();
+    if (e.target.closest('button[aria-label="Attach"]')) {
+      // Detached input: its events never bubble to window on their own.
+      const input = document.createElement("input");
+      input.type = "file";
+      input.multiple = true;
+      input.onchange = () => upload([...input.files], "picker");
+      input.click();
+    }
+  });
+  root.addEventListener("paste", (e) => {
+    if (e.clipboardData && e.clipboardData.files.length) { e.preventDefault(); upload([...e.clipboardData.files], "paste"); }
+  });
+  zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("over"); });
+  zone.addEventListener("dragleave", () => zone.classList.remove("over"));
+  zone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    zone.classList.remove("over");
+    upload([...e.dataTransfer.files], "drop");
+  });
+})();
+</script>
+</body>
+</html>

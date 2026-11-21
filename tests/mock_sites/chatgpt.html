@@ -1,0 +1,101 @@
+<!doctype html>
+<!-- Mock of chatgpt.com's structure for offline testing. The tests serve it AS
+     https://chatgpt.com/ so the extension's content scripts run on it.
+     Like the real app: a ProseMirror-style contenteditable #prompt-textarea with
+     its own Enter handler, a send button (data-testid="send-button"), a hidden
+     <input type=file>, a drop zone, and assistant messages marked with
+     data-message-author-role. Events are handled React-style: one delegated
+     listener on the app root. "Sent" prompts and "uploaded" files go to logs. -->
+<html lang="en" class="light">
+<head>
+  <meta charset="utf-8">
+  <title>ChatGPT (mock)</title>
+  <style>
+    body { font-family: -apple-system, sans-serif; margin: 0; color: #0d0d0d; background: #fff; }
+    html.dark body { color: #ececec; background: #212121; }
+    main { max-width: 760px; margin: 0 auto; padding: 24px; }
+    .hidden { display: none; }
+    #prompt-textarea { min-height: 40px; border: 1px solid #ccc; border-radius: 16px; padding: 10px 14px; }
+    #drop-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.3); display: none; }
+    #drop-overlay.show { display: block; }
+    pre { background: #f4f4f4; padding: 8px; }
+  </style>
+</head>
+<body>
+<div id="__next">
+  <main>
+    <div data-testid="conversation-turn-1">
+      <div data-message-author-role="user"><div class="whitespace-pre-wrap">What is a DLP tool?</div></div>
+    </div>
+    <div data-testid="conversation-turn-2">
+      <div data-message-author-role="assistant" data-message-id="m2">
+        <div class="markdown prose"><p>A data loss prevention tool watches data leaving a system.</p>
+          <pre><code class="language-python">print("hello")</code></pre></div>
+      </div>
+    </div>
+    <form class="w-full" id="composer-form">
+      <input type="file" multiple class="hidden" tabindex="-1">
+      <button type="button" id="attach" aria-label="Add photos and files">+</button>
+      <div contenteditable="true" translate="no" class="ProseMirror" id="prompt-textarea"><p></p></div>
+      <button id="composer-submit-button" data-testid="send-button" aria-label="Send prompt" type="button">↑</button>
+    </form>
+    <h3>Sent</h3><ol id="sent-log"></ol>
+    <h3>Uploaded</h3><ol id="upload-log"></ol>
+  </main>
+  <div id="drop-overlay"></div>
+</div>
+<script>
+(() => {
+  const root = document.getElementById("__next");
+  const editor = document.getElementById("prompt-textarea");
+  const fileInput = document.querySelector('input[type="file"]');
+  const overlay = document.getElementById("drop-overlay");
+
+  async function digest(file) {
+    const buf = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+    return [...new Uint8Array(buf)].slice(0, 6).map(b => b.toString(16).padStart(2, "0")).join("");
+  }
+  async function upload(files, via) {
+    for (const f of files) {
+      const li = document.createElement("li");
+      li.textContent = `${f.name}|${f.size}|${await digest(f)}|${via}`;
+      document.getElementById("upload-log").appendChild(li);
+    }
+  }
+  function send() {
+    const text = editor.innerText.trim();
+    if (!text) return;
+    const li = document.createElement("li");
+    li.textContent = text;
+    document.getElementById("sent-log").appendChild(li);
+    editor.innerHTML = "<p></p>";
+  }
+
+  // ProseMirror-style: the editor handles Enter itself.
+  editor.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); }
+  });
+  editor.addEventListener("paste", (e) => {
+    if (e.clipboardData && e.clipboardData.files.length) { e.preventDefault(); upload([...e.clipboardData.files], "paste"); }
+  });
+
+  // React-style: delegated listeners on the root container.
+  root.addEventListener("click", (e) => {
+    if (e.target.closest('[data-testid="send-button"]')) send();
+    if (e.target.closest("#attach")) fileInput.click();
+  });
+  root.addEventListener("change", (e) => {
+    if (e.target === fileInput) { upload([...fileInput.files], "picker"); fileInput.value = ""; }
+  });
+  root.addEventListener("dragenter", (e) => { e.preventDefault(); overlay.classList.add("show"); });
+  root.addEventListener("dragover", (e) => e.preventDefault());
+  root.addEventListener("dragleave", (e) => { if (!e.relatedTarget) overlay.classList.remove("show"); });
+  root.addEventListener("drop", (e) => {
+    e.preventDefault();
+    overlay.classList.remove("show");
+    upload([...e.dataTransfer.files], "drop");
+  });
+})();
+</script>
+</body>
+</html>
