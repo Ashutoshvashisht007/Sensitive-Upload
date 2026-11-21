@@ -19,7 +19,7 @@ There's **no browser extension**. The app sits in the menu bar, and you keep usi
   - Office documents and zip files.
 
   If the marker is there, the dialog names the file and says where the marker was found.
-- **Continue** forwards the request exactly as the browser sent it. **Cancel** answers it on the Mac, so nothing reaches the site, and a macOS notification confirms the block. ChatGPT shows "Blocked by Sensitive Upload Guard" with a Retry button; Perplexity shows nothing. Either way you can edit and try again.
+- **Continue** forwards the request exactly as the browser sent it. **Cancel** answers it on the Mac, so nothing reaches the site. ChatGPT shows "Blocked by Sensitive Upload Guard. Nothing was sent." with a Retry button; Perplexity shows its own "Something went wrong while generating this response." Either way you can edit and try again.
 - **Analytics.** Both sites copy what you type into their analytics and telemetry. Those requests are blocked silently when they carry the marker, unless you chose Continue for that text.
 - **AI responses are recoloured** on both sites, in light and dark themes.
 - **Nothing else is touched.** Only ChatGPT, Perplexity and their upload hosts are routed through the app; every other site goes direct.
@@ -151,7 +151,7 @@ uv run python scripts/check_dialog_closes.py       # dialog really closes after 
 
 - **macOS only.** The installer, the dialog and OCR use macOS APIs. The core proxy would run elsewhere, but it's untested there.
 - **Firefox** uses its own certificate store, so it needs the CA added there too. Apps that pin certificates can't be read, and would fail if routed. The ChatGPT desktop app is worth checking before relying on this.
-- **Cancel shows the site's own error, or none.** At the network level the app can stop a request but can't keep text in the site's message box. ChatGPT shows the block with a Retry button; Perplexity shows nothing, so the app adds a macOS notification. You can edit and resend on both.
+- **Cancel shows the site's own error, or none.** At the network level the app can stop a request but can't keep text in the site's message box. ChatGPT shows the block message with a Retry button; Perplexity shows its generic "Something went wrong" error. You can edit and resend on both.
 - **Endpoints change.** The rules in `sites.py` name the known send and upload endpoints. The general rules catch anything else that carries the marker, but a brand-new upload host has to be added to the routing list.
 - **OCR** can miss tiny, stylised or handwritten text. In OCR'd text the match is tolerant, so it can occasionally flag the two words "walled sensitive" in an image. Files that can't be read ask instead of passing. Only the first frame of a GIF or TIFF is read.
 - **Large files.** Uploads over 25 MB aren't inspected; the user is asked first.

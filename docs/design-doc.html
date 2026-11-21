@@ -177,7 +177,7 @@
 <ul class="small">
   <li><b>Keys:</b> decisions are keyed on the content itself, the prompt text or the sha256 of the file. Parallel requests carrying the same content wait on one dialog.</li>
   <li><b>Memory:</b> Continue is remembered for 10 minutes, so retries aren't asked again. Cancel is remembered for 1.5 s, only to absorb those parallel duplicates.</li>
-  <li><b>Cancel's reply</b> carries CORS headers for the page, so the site's own error handling can show it. ChatGPT does, with Retry; Perplexity shows nothing, so a macOS notification confirms the block. The message never contains the marker, because sites echo errors into telemetry.</li>
+  <li><b>Cancel's reply</b> carries CORS headers for the page, so the site's own error handling can show it. ChatGPT does, with Retry; Perplexity shows its generic "Something went wrong" error. The message never contains the marker, because sites echo errors into telemetry.</li>
 </ul>
 </div>
 

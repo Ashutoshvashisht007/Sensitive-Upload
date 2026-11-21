@@ -101,7 +101,7 @@ mitmproxy hands every request on a routed host to the add-on **before** anything
 
 **Enforcement:**
 - **Continue:** the add-on returns without touching the flow, and mitmproxy forwards the original bytes.
-- **Cancel:** the add-on sets `flow.response` to a local `403`, so the request is never sent upstream. The body is `{"detail": "Blocked by Sensitive Upload Guard. Nothing was sent."}`, plus CORS headers for the page's origin, so the site's own error handling can show it. ChatGPT does, with a Retry button; Perplexity shows nothing, so the app also posts a macOS notification. The message deliberately doesn't contain the marker, because sites echo error messages into their telemetry, which would trigger a second dialog. Every decision is written to the audit log, without content.
+- **Cancel:** the add-on sets `flow.response` to a local `403`, so the request is never sent upstream. The body is `{"detail": "Blocked by Sensitive Upload Guard. Nothing was sent."}`, plus CORS headers for the page's origin, so the site's own error handling can show it. ChatGPT does, with a Retry button; Perplexity shows its generic "Something went wrong while generating this response." The message deliberately doesn't contain the marker, because sites echo error messages into their telemetry, which would trigger a second dialog. Every decision is written to the audit log, without content.
 
 ## 5. Recolouring answers
 
