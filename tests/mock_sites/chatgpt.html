@@ -1,126 +1,84 @@
 <!doctype html>
-<!-- Mock of chatgpt.com's structure for offline testing. The tests serve it AS
-     https://chatgpt.com/ so the extension's content scripts run on it.
-     Matches the live markup (Nov 2026): theme in <html data-theme>, a
-     ProseMirror contenteditable (aria-label "Ask ChatGPT") inside
-     [data-composer-input] with its own Enter handler, a send button in the
-     composer's trailing controls (type=submit, aria-label "Send": sending goes
-     through the form's submit event), four hidden file inputs in the composer
-     form, assistant replies in [data-response-body] >
-     [data-markdown-text-style="assistant-message"], user messages in
-     [data-user-message-bubble]. Events are handled React-style: one delegated
-     listener on the app root. "Sent" prompts and "uploaded" files go to logs. -->
+<!-- Local copy of chatgpt.com's structure for the browser tests. The test
+     server hands it out AS https://chatgpt.com/ through the guard, with a
+     Content-Security-Policy that uses style nonces like the real site.
+     Sending and uploading make the same kind of network calls as the real app:
+       send    POST /backend-api/f/conversation (JSON, prompt in messages[].content.parts)
+       upload  POST /backend-api/files (file name) → PUT bytes to the returned
+               https://files.oaiusercontent.com/... URL -->
 <html lang="en-US" class="chatgpt-theme" data-theme="light">
 <head>
   <meta charset="utf-8">
   <title>ChatGPT (mock)</title>
-  <style>
+  <style nonce="sitenonce">
     body { font-family: -apple-system, sans-serif; margin: 0; color: #0d0d0d; background: #fff; }
-    html[data-theme="dark"] body { color: #ececec; background: #212121; }
     main { max-width: 760px; margin: 0 auto; padding: 24px; }
     .hidden { display: none; }
     [data-user-message-bubble] { margin-left: auto; max-width: 70%; background: #f4f4f4; border-radius: 18px; padding: 8px 14px; }
     .ProseMirror { min-height: 40px; border: 1px solid #ccc; border-radius: 16px; padding: 10px 14px; }
-    #drop-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.3); display: none; }
-    #drop-overlay.show { display: block; }
-    pre { background: #f4f4f4; padding: 8px; }
   </style>
 </head>
 <body>
 <div id="root">
   <main>
-    <div data-virtualized-turn data-turn-key="t1">
-      <div data-conversation-role="user" data-content-search-unit-key="u1:1:user">
-        <div data-user-message-bubble data-user-message-has-prompt><div>What is a DLP tool?</div></div>
-      </div>
-      <div data-conversation-role="assistant" data-content-search-unit-key="u1:1:assistant">
-        <div data-response-body="m1">
-          <div class="group flex min-w-0 flex-col">
-            <div data-markdown-text-style="assistant-message" class="MarkdownRoot">
-              <div data-dil-response>
-                <p data-d-component="text">A data loss prevention tool watches data leaving a system.</p>
-                <ol data-d-component="list"><li data-d-component="list-item">Endpoint agents</li></ol>
-                <pre><code>print("hello")</code></pre>
-              </div>
-            </div>
-          </div>
+    <div data-conversation-role="user"><div data-user-message-bubble><div>What is a DLP tool?</div></div></div>
+    <div data-conversation-role="assistant">
+      <div data-response-body="m1">
+        <div data-markdown-text-style="assistant-message">
+          <p>A data loss prevention tool watches data leaving a system.</p>
+          <pre><code>print("hello")</code></pre>
         </div>
       </div>
     </div>
     <form id="composer-form">
-      <div data-chatgpt-composer>
-        <input type="file" class="hidden" aria-label="Take a photo" accept="image/*">
-        <input type="file" class="hidden" aria-label="Attach photos or videos" accept="image/*,video/*" multiple>
-        <input type="file" class="hidden" aria-label="Attach photos" accept="image/*" multiple>
-        <input type="file" class="hidden" aria-label="Attach files" multiple>
-        <div data-composer-leading-controls>
-          <button type="button" aria-label="Add files and more">+</button>
-        </div>
-        <div data-composer-input>
-          <div contenteditable="true" role="textbox" aria-label="Ask ChatGPT" translate="no" class="ProseMirror"><p></p></div>
-        </div>
-        <div data-composer-trailing-controls>
-          <button type="submit" aria-label="Send" class="cursor-interaction size-token-button-composer">↑</button>
-        </div>
+      <input type="file" class="hidden" aria-label="Attach files" multiple>
+      <div data-composer-input>
+        <div contenteditable="true" role="textbox" aria-label="Ask ChatGPT" class="ProseMirror"><p></p></div>
       </div>
+      <button type="submit" aria-label="Send">↑</button>
     </form>
     <h3>Sent</h3><ol id="sent-log"></ol>
+    <h3>Errors</h3><ol id="error-log"></ol>
     <h3>Uploaded</h3><ol id="upload-log"></ol>
+    <h3>Upload errors</h3><ol id="upload-error-log"></ol>
   </main>
-  <div id="drop-overlay"></div>
 </div>
 <script>
 (() => {
-  const root = document.getElementById("root");
   const editor = document.querySelector('[data-composer-input] [contenteditable="true"]');
-  const attachFiles = document.querySelector('input[aria-label="Attach files"]');
-  const overlay = document.getElementById("drop-overlay");
+  const form = document.getElementById("composer-form");
+  const input = document.querySelector('input[aria-label="Attach files"]');
+  const log = (id, text) => { const li = document.createElement("li"); li.textContent = text; document.getElementById(id).appendChild(li); };
 
-  async function digest(file) {
-    const buf = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
-    return [...new Uint8Array(buf)].slice(0, 6).map(b => b.toString(16).padStart(2, "0")).join("");
-  }
-  async function upload(files, via) {
-    for (const f of files) {
-      const li = document.createElement("li");
-      li.textContent = `${f.name}|${f.size}|${await digest(f)}|${via}`;
-      document.getElementById("upload-log").appendChild(li);
-    }
-  }
-  function send() {
+  async function send() {
     const text = editor.innerText.trim();
     if (!text) return;
-    const li = document.createElement("li");
-    li.textContent = text;
-    document.getElementById("sent-log").appendChild(li);
-    editor.innerHTML = "<p></p>";
+    editor.innerHTML = "<p></p>";  // the real app clears the box when sending
+    try {
+      const r = await fetch("/backend-api/f/conversation", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "next", messages: [{ author: { role: "user" }, content: { content_type: "text", parts: [text] } }] }),
+      });
+      if (r.ok) log("sent-log", text);
+      else log("error-log", `${r.status} ${(await r.json().catch(() => ({}))).detail || ""}`);
+    } catch (e) { log("error-log", "network " + e); }
   }
 
-  // ProseMirror-style: the editor handles Enter itself and submits the form.
-  const form = document.getElementById("composer-form");
-  editor.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); form.requestSubmit(); }
-  });
-  editor.addEventListener("paste", (e) => {
-    if (e.clipboardData && e.clipboardData.files.length) { e.preventDefault(); upload([...e.clipboardData.files], "paste"); }
-  });
+  async function upload(file) {
+    try {
+      const meta = await fetch("/backend-api/files", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ file_name: file.name, file_size: file.size, use_case: "my_files" }),
+      });
+      const { upload_url } = await meta.json();
+      const r = await fetch(upload_url, { method: "PUT", headers: { "x-ms-blob-type": "BlockBlob", "content-type": file.type || "application/octet-stream" }, body: file });
+      if (r.ok) log("upload-log", file.name); else log("upload-error-log", `${file.name} ${r.status}`);
+    } catch (e) { log("upload-error-log", `${file.name} network`); }
+  }
 
-  // React-style: delegated listeners on the root container.
-  root.addEventListener("click", (e) => {
-    if (e.target.closest('[aria-label="Add files and more"]')) attachFiles.click();
-  });
-  root.addEventListener("submit", (e) => { e.preventDefault(); send(); });
-  root.addEventListener("change", (e) => {
-    if (e.target.type === "file") { upload([...e.target.files], "picker"); e.target.value = ""; }
-  });
-  root.addEventListener("dragenter", (e) => { e.preventDefault(); overlay.classList.add("show"); });
-  root.addEventListener("dragover", (e) => e.preventDefault());
-  root.addEventListener("dragleave", (e) => { if (!e.relatedTarget) overlay.classList.remove("show"); });
-  root.addEventListener("drop", (e) => {
-    e.preventDefault();
-    overlay.classList.remove("show");
-    upload([...e.dataTransfer.files], "drop");
-  });
+  editor.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } });
+  form.addEventListener("submit", (e) => { e.preventDefault(); send(); });
+  input.addEventListener("change", () => { for (const f of input.files) upload(f); input.value = ""; });
 })();
 </script>
 </body>

@@ -4,7 +4,8 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-OUT = Path(__file__).resolve().parent.parent / "extension" / "icons"
+ROOT = Path(__file__).resolve().parent.parent
+ASSETS = ROOT / "src" / "upload_guard" / "assets"
 
 
 def shield(size: int) -> Image.Image:
@@ -25,11 +26,24 @@ def shield(size: int) -> Image.Image:
     return img.resize((size, size), Image.LANCZOS)
 
 
+def menubar_template(size: int) -> Image.Image:
+    """Black shield with a cut-out tick on transparent: macOS tints template images for light/dark."""
+    img = shield(size)
+    alpha = img.getchannel("A")
+    r, g, b, _ = img.split()
+    # the tick is white in the colour icon: make it transparent, everything else black
+    tick = Image.merge("RGB", (r, g, b)).convert("L").point(lambda v: 255 if v > 200 else 0)
+    out_alpha = Image.composite(Image.new("L", img.size, 0), alpha, tick)
+    out = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    out.putalpha(out_alpha)
+    return out
+
+
 def main() -> None:
-    OUT.mkdir(parents=True, exist_ok=True)
-    for size in (16, 48, 128):
-        shield(size).save(OUT / f"icon{size}.png")
-    print(f"icons written to {OUT}")
+    ASSETS.mkdir(parents=True, exist_ok=True)
+    menubar_template(36).save(ASSETS / "menubar.png")  # drawn at 18 pt on retina
+    shield(128).save(ASSETS / "icon128.png")
+    print(f"icons written to {ASSETS}")
 
 
 if __name__ == "__main__":

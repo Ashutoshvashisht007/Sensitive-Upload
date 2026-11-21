@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
-from ..protocol import site_name
+from ..sites import site_label as site_name
 
 MARKER = "WALLED_SENSITIVE"
 
@@ -30,7 +30,7 @@ def prompt_text(site: str, excerpt: str) -> DialogText:
         body=(
             f"Your prompt to {site_name(site)} contains {MARKER}.\n\n"
             f"“{excerpt}”\n\n"
-            "Continue sends it unchanged. Cancel keeps it in the box so you can edit it."
+            "Continue sends it unchanged. Cancel stops it here: nothing is sent, and you can edit and try again."
         ),
     )
 
