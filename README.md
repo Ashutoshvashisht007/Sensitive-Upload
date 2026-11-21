@@ -114,13 +114,13 @@ For a prompt, send anything containing `WALLED_SENSITIVE`.
 ## Tests
 
 ```sh
-uv run pytest      # 154 tests
+uv run pytest      # 160 tests
 ```
 
 | Suite | Tests | What it covers |
 |---|---|---|
-| End to end (`tests/e2e`) | 20 | Chromium uses only the app's PAC and goes through the real guard to a local stand-in for both sites (`tests/mock_sites`), which records what arrives. Covers clean prompts and files, Cancel and Continue for prompts and for txt / PDF / scanned PDF / PNG, typeahead never leaking the marker, oversized files, recolouring under a nonce CSP, other sites going direct, and the AI sites failing closed when the app is down |
-| Add-on | 24 | The guard on mitmproxy flows: dialog wording, upload file names, multipart uploads, size limits, telemetry copies of a prompt, recolouring |
+| End to end (`tests/e2e`) | 21 | Chromium uses only the app's PAC and goes through the real guard to a local stand-in for both sites (`tests/mock_sites`), which records what arrives. Covers clean prompts and files, Cancel and Continue for prompts and for txt / PDF / scanned PDF / PNG, typeahead never leaking the marker, oversized files, recolouring under a nonce CSP, other sites going direct, and the AI sites failing closed when the app is down |
+| Add-on | 29 | The guard on mitmproxy flows: dialog wording, upload file names (including ChatGPT's live `upload_reservations` flow), automatic upload retries, multipart uploads, size limits, telemetry copies of a prompt, recolouring and cache revalidation |
 | Units | 37 | Site rules, body parsing, CSP patching, PAC routing (evaluated in Node), the decision memory |
 | Installer | 8 | The CA, PAC backup and restore, a single admin prompt, the login item. System tools are mocked |
 | Detectors | 33 | Every detector on generated fixtures, including OCR and the tesseract fallback |

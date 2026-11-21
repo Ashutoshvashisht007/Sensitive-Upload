@@ -36,7 +36,7 @@ FIX = Path(__file__).resolve().parents[1] / "fixtures"
 SITES = {
     "chatgpt": dict(url="https://chatgpt.com/", composer='[data-composer-input] [contenteditable="true"]',
                     files='input[aria-label="Attach files"]', send="/backend-api/f/conversation",
-                    storage="files.oaiusercontent.com", label="ChatGPT",
+                    storage="sdmntprnortheu.oaiusercontent.com", label="ChatGPT",
                     response='[data-markdown-text-style="assistant-message"] p',
                     user="[data-user-message-bubble] div", color="rgb(15, 118, 110)"),
     "perplexity": dict(url="https://www.perplexity.ai/", composer='[role="textbox"]', files='input[type="file"]',
@@ -290,3 +290,14 @@ def test_ai_sites_fail_closed_when_the_guard_is_not_running(env):
         assert other.inner_text("body") == "direct"  # everything else keeps working
     finally:
         browser.close()
+
+
+def test_recolour_survives_a_reload(env):
+    """Pages are fetched in full every time, so a cached copy without the style is never used."""
+    page = env.open("perplexity")
+    page.reload()
+    page.wait_for_selector(SITES["perplexity"]["composer"])
+    colour = page.evaluate(f"getComputedStyle(document.querySelector('{SITES['perplexity']['response']}')).color")
+    assert colour == SITES["perplexity"]["color"]
+    pages = env.upstream.received("GET", host="www.perplexity.ai", path="/")
+    assert pages and all("if-none-match" not in r["headers"] for r in pages if r["path"] == "/")

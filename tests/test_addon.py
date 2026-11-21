@@ -248,3 +248,63 @@ def test_telemetry_with_marker_but_no_decision_is_blocked_quietly():
 def test_block_message_never_contains_the_marker():
     # sites copy error messages into their telemetry; the marker in it would trigger another dialog
     assert "WALLED" not in BLOCK_MESSAGE.upper()
+
+
+# ---------------------------------------------------------------- live-test regressions
+
+def test_chatgpt_upload_reservation_names_the_file():
+    """The live ChatGPT flow: POST /backend-api/files/upload_reservations, then PUT .../files/<id>/raw."""
+    guard, dialog = make_guard("cancel")
+    data = (FIX / "marker.txt").read_bytes()
+    setup = flow("POST", "https://chatgpt.com/backend-api/files/upload_reservations",
+                 json.dumps({"file_name": "notes.txt", "file_size": len(data), "use_case": "my_files"}).encode())
+    run(guard, setup)
+    setup.response = http.Response.make(200, json.dumps({
+        "file_id": "file_0001", "upload_url": "https://sdmntprnortheu.oaiusercontent.com/files/0001/raw?se=1&sig=x"}).encode(),
+        {"content-type": "application/json"})
+    guard.response(setup)
+    put = flow("PUT", "https://sdmntprnortheu.oaiusercontent.com/files/0001/raw?se=1&sig=x", data,
+               {"content-type": "text/plain", "origin": "https://chatgpt.com"})
+    run(guard, put)
+    assert blocked(put)
+    assert dialog.shown[0].body.startswith("“notes.txt” (line 2) contains WALLED_SENSITIVE")
+
+
+def test_any_json_naming_a_file_teaches_the_name():
+    guard, dialog = make_guard("cancel")
+    setup = flow("POST", "https://chatgpt.com/backend-api/some/new/endpoint", json.dumps({"filename": "plan.txt"}).encode())
+    run(guard, setup)
+    setup.response = http.Response.make(200, json.dumps({"url": "https://files.oaiusercontent.com/x/raw"}).encode(),
+                                        {"content-type": "application/json"})
+    guard.response(setup)
+    put = flow("PUT", "https://files.oaiusercontent.com/x/raw", (FIX / "marker.txt").read_bytes(), {"content-type": "text/plain"})
+    run(guard, put)
+    assert dialog.shown[0].body.startswith("“plan.txt”")
+
+
+def test_automatic_retry_of_a_cancelled_upload_is_not_asked_again():
+    guard, dialog = make_guard("cancel")
+    data = (FIX / "marker.txt").read_bytes()
+    first = flow("PUT", "https://files.oaiusercontent.com/a/raw", data, {"content-type": "text/plain"})
+    retry = flow("PUT", "https://sdmntprukwest.oaiusercontent.com/b/raw", data, {"content-type": "text/plain"})
+    run(guard, first, retry)
+    assert blocked(first) and blocked(retry) and len(dialog.shown) == 1
+
+
+def test_page_requests_always_fetch_a_full_page():
+    guard, _ = make_guard()
+    f = flow("GET", "https://www.perplexity.ai/session/abc", b"",
+             {"sec-fetch-dest": "document", "if-none-match": '"etag1"', "if-modified-since": "Sat, 21 Nov 2026 10:00:00 GMT"})
+    run(guard, f)
+    assert "if-none-match" not in f.request.headers and "if-modified-since" not in f.request.headers
+    f.response = http.Response.make(200, b"<html><head></head></html>", {"content-type": "text/html", "etag": '"e2"'})
+    guard.response(f)
+    assert "upload-guard-response-color" in f.response.text and "etag" not in f.response.headers
+
+
+def test_question_typed_into_the_address_bar_asks():
+    guard, dialog = make_guard("cancel")
+    f = flow("GET", "https://www.perplexity.ai/search?q=WALLED_SENSITIVE%20plan", b"", {"sec-fetch-dest": "document"})
+    run(guard, f)
+    assert f.response.status_code == 403 and b"Nothing was sent" in f.response.content
+    assert "Your prompt to Perplexity" in dialog.shown[0].body

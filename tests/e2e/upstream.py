@@ -14,7 +14,8 @@ from pathlib import Path
 
 MOCKS = Path(__file__).resolve().parents[1] / "mock_sites"
 CHATGPT_CSP = ("default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'nonce-sitenonce'; "
-               "connect-src 'self' https://files.oaiusercontent.com")
+               "connect-src 'self' https://*.oaiusercontent.com")
+STORAGE = "sdmntprnortheu.oaiusercontent.com"
 
 
 class Upstream(ThreadingHTTPServer):
@@ -60,7 +61,7 @@ class Handler(BaseHTTPRequestHandler):
     def _record(self, body=b""):
         self.server.requests.append({
             "method": self.command, "host": self._host(), "path": self.path, "body": body,
-            "sha": hashlib.sha256(body).hexdigest(),
+            "sha": hashlib.sha256(body).hexdigest(), "headers": {k.lower(): v for k, v in self.headers.items()},
         })
 
     def _send(self, code, body=b"", ctype="application/json", extra=None):
@@ -91,7 +92,12 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, (MOCKS / "chatgpt.html").read_bytes(), "text/html; charset=utf-8",
                        {"Content-Security-Policy": CHATGPT_CSP})
         elif self.path == "/" and host == "www.perplexity.ai":
-            self._send(200, (MOCKS / "perplexity.html").read_bytes(), "text/html; charset=utf-8")
+            # cacheable like the real site: a revalidation would come back 304 with no body
+            if self.headers.get("If-None-Match") == '"pplx-v1"':
+                self._send(304, b"", "text/html", {"ETag": '"pplx-v1"'})
+            else:
+                self._send(200, (MOCKS / "perplexity.html").read_bytes(), "text/html; charset=utf-8",
+                           {"ETag": '"pplx-v1"', "Cache-Control": "no-cache"})
         elif self.path.startswith("/rest/autosuggest"):
             self._send(200, b"[]")
         elif host == "direct.test":
@@ -105,10 +111,12 @@ class Handler(BaseHTTPRequestHandler):
         host, path = self._host(), self.path
         if path.startswith("/backend-api/f/conversation") or path.startswith("/rest/sse/perplexity_ask"):
             self._send(200, b'data: {"ok": true}\n\n', "text/event-stream")
-        elif path == "/backend-api/files":
+        elif path == "/backend-api/files/upload_reservations":
             n = self.server.next_id()
-            self._send(200, json.dumps({"file_id": f"file-{n}",
-                                        "upload_url": f"https://files.oaiusercontent.com/file-{n}?se=2026&sig=abc"}).encode())
+            self._send(200, json.dumps({"file_id": f"file_{n:04d}",
+                                        "upload_url": f"https://{STORAGE}/files/{n:04d}/raw?se=2026&sig=abc"}).encode())
+        elif path.startswith("/backend-api/files/upload_reservations/") and path.endswith("/claim_and_finish"):
+            self._send(200, b'{"status": "success"}')
         elif path.startswith("/rest/uploads/create_upload_url"):
             n = self.server.next_id()
             self._send(200, json.dumps({"s3_bucket_url": "https://ppl-ai-file-upload.s3.amazonaws.com/",
@@ -121,7 +129,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_PUT(self):
         body = self._body()
         self._record(body)
-        self._send(201 if self._host() == "files.oaiusercontent.com" else 404)
+        self._send(201 if self._host().endswith(".oaiusercontent.com") else 404)
 
 
 class RedirectUpstream:

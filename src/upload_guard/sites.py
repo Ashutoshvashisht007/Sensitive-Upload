@@ -55,7 +55,7 @@ CHATGPT = Site(
     upload_hosts=("*.oaiusercontent.com",),
     # /backend-api/f/conversation is the current send endpoint; the others are older or variants.
     send_paths=(r"^/backend-api/(f/)?conversation(/prepare)?$", r"^/backend-api/(f/)?conversation/[^/]+$"),
-    setup_paths=(r"^/backend-api/files$", r"^/backend-api/files/process_upload_stream"),
+    setup_paths=(r"^/backend-api/files(/upload_reservations)?$", r"^/backend-api/files/process_upload_stream"),
     responses=(
         '[data-markdown-text-style="assistant-message"]',
         "[data-response-body]",

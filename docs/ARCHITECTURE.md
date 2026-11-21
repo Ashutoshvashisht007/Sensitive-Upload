@@ -112,6 +112,8 @@ When a routed site returns an HTML page (`GET`, `200`, `text/html`, `Sec-Fetch-D
 
 The colours are teal: `#0f766e` in light themes and `#5eead4` in dark, following `<html data-theme>` (ChatGPT), `data-color-scheme` (Perplexity) or the system setting. Because the rule matches the answer containers, text that streams in later is coloured too.
 
+**Caching.** Page requests to the two sites have their `If-None-Match`/`If-Modified-Since` headers removed, and coloured pages lose their `ETag`/`Last-Modified`. Otherwise a cached copy from before the app was installed could come back as `304 Not Modified` and be shown without the style. The live test showed this on Perplexity, whose pages are cacheable.
+
 **CSP.** If the page's Content-Security-Policy would block an inline `<style>`, the style gets a fresh nonce, and only a `style-src-elem` directive is added or extended. Nothing else in the policy changes. A policy that already allows inline styles with `'unsafe-inline'` is left alone, because adding a nonce there would switch `'unsafe-inline'` off for the site's own styles.
 
 ## 6. Detection
@@ -191,14 +193,14 @@ Getting it over **full-screen Chrome** took four fixes:
 
 ## 11. How it's tested
 
-154 tests, all run by `uv run pytest`:
+160 tests, all run by `uv run pytest`:
 
-- **End to end (20).** Chromium starts with only the app's PAC data URL. It goes through the real guard to a local stand-in for both sites, which records what arrives, so "blocked before it was sent" is checked directly. The mock pages copy each site's markup and network calls:
+- **End to end (21).** Chromium starts with only the app's PAC data URL. It goes through the real guard to a local stand-in for both sites, which records what arrives, so "blocked before it was sent" is checked directly. The mock pages copy each site's markup and network calls:
   - ChatGPT: `POST /backend-api/files`, then `PUT` to `files.oaiusercontent.com`;
   - Perplexity: `create_upload_url`, then a multipart `POST` to the S3 bucket; typeahead `GET`s.
 
   The ChatGPT mock also sends a nonce-based CSP.
-- **Add-on (24)** on mitmproxy flows, including telemetry copies of a prompt.
+- **Add-on (29)** on mitmproxy flows, including telemetry copies of a prompt, ChatGPT's live upload flow and automatic retries.
 - **Units (37):** sites, bodies, CSP, PAC routing evaluated in Node, the Decider.
 - **Installer (8),** with `networksetup`, `security` and `launchctl` mocked.
 - **Detectors (33)** and **marker rules (30)** on generated fixtures.

@@ -250,7 +250,7 @@
 <h2>9. Testing</h2>
 <table>
 <tr><th style="width:24%">Suite</th><th style="width:8%">Tests</th><th>What it covers</th></tr>
-<tr><td>End to end</td><td>20</td><td>Chromium with only the app's PAC goes through the real guard to a local stand-in for both sites, which records what arrives, so "blocked before it was sent" is checked directly. Covers:
+<tr><td>End to end</td><td>21</td><td>Chromium with only the app's PAC goes through the real guard to a local stand-in for both sites, which records what arrives, so "blocked before it was sent" is checked directly. Covers:
   <ul>
     <li>clean prompts and files;</li>
     <li>Cancel and Continue for prompts, and for txt, PDF, scanned PDF and PNG files;</li>
@@ -259,7 +259,7 @@
     <li>recolouring under a nonce CSP;</li>
     <li>other sites going direct, and the AI sites failing closed when the app is down.</li>
   </ul></td></tr>
-<tr><td>Add-on</td><td>24</td><td>mitmproxy flows: dialog wording, file names from set-up replies and multipart parts, size limits, telemetry copies, recolouring</td></tr>
+<tr><td>Add-on</td><td>29</td><td>mitmproxy flows: dialog wording, file names (including ChatGPT's live upload flow), automatic upload retries, size limits, telemetry copies, recolouring and cache revalidation</td></tr>
 <tr><td>Units</td><td>37</td><td>Site rules, body parsing, CSP patching, PAC routing evaluated in Node, decision memory</td></tr>
 <tr><td>Installer</td><td>8</td><td>CA, PAC backup and restore, one admin prompt for all services, the login item. System tools are mocked</td></tr>
 <tr><td>Detectors + marker</td><td>33 + 30</td><td>Generated fixtures, including OCR, the tesseract fallback, encrypted and damaged PDFs</td></tr>

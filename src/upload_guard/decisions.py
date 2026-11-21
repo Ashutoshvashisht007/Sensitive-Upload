@@ -26,6 +26,7 @@ log = logging.getLogger(__name__)
 
 CONTINUE_TTL = 600.0
 CANCEL_TTL = 1.5  # just long enough to swallow parallel duplicates
+FILE_CANCEL_TTL = 6.0  # sites retry a refused upload by themselves within a few seconds
 
 
 class ThreadRunner:
@@ -91,7 +92,8 @@ class Decider:
         self._remembered.pop(key, None)
         return None
 
-    async def decide(self, key: str, make_text: Callable[[], DialogText]) -> tuple[bool, bool]:
+    async def decide(self, key: str, make_text: Callable[[], DialogText],
+                     cancel_ttl: float = CANCEL_TTL) -> tuple[bool, bool]:
         """Return (allowed, asked). `asked` is False when an earlier answer was reused."""
         known = self.remembered(key)
         if known is not None:
@@ -107,7 +109,7 @@ class Decider:
             except Exception:  # noqa: BLE001 - no dialog means no consent
                 log.exception("could not show the dialog; blocking")
                 allowed = False
-            ttl = CONTINUE_TTL if allowed else CANCEL_TTL
+            ttl = CONTINUE_TTL if allowed else cancel_ttl
             self._remembered[key] = (allowed, self._clock() + ttl)
             fut.set_result(allowed)
             return allowed, True

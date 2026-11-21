@@ -30,7 +30,7 @@ from mitmproxy import http
 
 from .. import audit
 from ..config import Config, LiveConfig, ensure_home, home_dir
-from ..decisions import Decider, content_key
+from ..decisions import FILE_CANCEL_TTL, Decider, content_key
 from ..detect import inspect_file, marker
 from ..dialog import FlaggedFile, files_text, prompt_text
 from ..sites import Site, by_key, host_matches, routed_host_patterns, site_for_host, site_for_origin
@@ -88,10 +88,19 @@ class GuardAddon:
         ctype = req.headers.get("content-type", "")
         path = urlsplit(req.path).path
 
-        if site.is_setup(path):
+        if self._is_page_request(flow, site):
+            # Always fetch the full page so the colour style can be added: a 304 from the
+            # browser's cache would bring back a copy without it.
+            for h in ("if-none-match", "if-modified-since"):
+                req.headers.pop(h, None)
+            # (no return: a page URL can carry a question, e.g. /search?q=..., and is still checked)
+
+        if req.method in WRITE_METHODS and ("json" in ctype or site.is_setup(path)):
+            # An upload is announced with a JSON body naming the file (path varies by site and
+            # over time); its reply carries the storage URL. Remember the name for that URL.
             data = bodies.parse_json(body)
             name = bodies.find_key(data, NAME_KEYS) if data is not None else None
-            if name:
+            if name and (site.is_setup(path) or "." in name):
                 flow.metadata["ug_setup_name"] = name
 
         files = self._files_in(flow, site, ctype, body)
@@ -112,7 +121,7 @@ class GuardAddon:
             if self.decider.remembered(key) is not True:
                 self._block(flow)
             return
-        if site.is_send(path) or req.method in WRITE_METHODS:
+        if site.is_send(path) or req.method in WRITE_METHODS or self._is_page_request(flow, site):
             self._log(flow, site, "send", marker_found=True)
             allowed, asked = await self.decider.decide(key, lambda: prompt_text(site.key, m.excerpt()))
             if asked:
@@ -154,8 +163,15 @@ class GuardAddon:
                 nonce = recolor.patch_headers(flow.response.headers)
                 css = recolor.css_for(site, self.config.color_light, self.config.color_dark)
                 flow.response.text = recolor.inject(flow.response.text or "", css, nonce)
+                for h in ("etag", "last-modified"):  # no validators: the next load is a full page again
+                    flow.response.headers.pop(h, None)
+                self._log_line({"site": site.key, "kind": "page", "path": urlsplit(flow.request.path).path,
+                                "status": flow.response.status_code, "styled": True})
             except Exception:  # noqa: BLE001 - never break the page over colours
                 log.exception("recolouring failed")
+        elif self._is_page_request(flow, site):
+            self._log_line({"site": site.key, "kind": "page", "path": urlsplit(flow.request.path).path,
+                            "status": flow.response.status_code, "styled": False})
 
     # ------------------------------------------------------------------ files
 
@@ -188,7 +204,8 @@ class GuardAddon:
             return
         key = content_key("file", b"".join(content_key("f", d).encode() for _n, d, _f in findings))
         clean = len(files) - len(flagged)
-        allowed, asked = await self.decider.decide(key, lambda: files_text(site.key, flagged, clean))
+        allowed, asked = await self.decider.decide(key, lambda: files_text(site.key, flagged, clean),
+                                                   cancel_ttl=FILE_CANCEL_TTL)
         if asked:
             for f in flagged:
                 reason = f"uninspectable: {f.reason}" if f.uninspectable else "marker"
@@ -229,6 +246,13 @@ class GuardAddon:
         return site
 
     @staticmethod
+    def _is_page_request(flow, site: Site) -> bool:
+        req = flow.request
+        return (req.method == "GET"
+                and req.headers.get("sec-fetch-dest", "") in ("document", "iframe")
+                and host_matches(req.pretty_host, site.hosts))
+
+    @staticmethod
     def _is_page(flow, site: Site) -> bool:
         req, resp = flow.request, flow.response
         return (
@@ -241,6 +265,12 @@ class GuardAddon:
 
     @staticmethod
     def _block(flow) -> None:
+        if flow.request.headers.get("sec-fetch-dest") == "document":
+            page = (f"<!doctype html><meta charset=utf-8><title>Blocked</title>"
+                    f"<body style='font:16px -apple-system,sans-serif;margin:15vh auto;max-width:520px'>"
+                    f"<h2>Sensitive Upload Guard</h2><p>{BLOCK_MESSAGE}</p></body>")
+            flow.response = http.Response.make(403, page.encode(), {"Content-Type": "text/html; charset=utf-8"})
+            return
         origin = flow.request.headers.get("origin")
         headers = {"Content-Type": "application/json", "X-Upload-Guard": "blocked"}
         if origin:

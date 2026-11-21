@@ -4,8 +4,9 @@
      Content-Security-Policy that uses style nonces like the real site.
      Sending and uploading make the same kind of network calls as the real app:
        send    POST /backend-api/f/conversation (JSON, prompt in messages[].content.parts)
-       upload  POST /backend-api/files (file name) → PUT bytes to the returned
-               https://files.oaiusercontent.com/... URL -->
+       upload  POST /backend-api/files/upload_reservations (file name) → PUT bytes to the
+               returned https://sdmntpr….oaiusercontent.com/files/<id>/raw URL →
+               POST …/claim_and_finish (the flow seen on the live site, Nov 2026) -->
 <html lang="en-US" class="chatgpt-theme" data-theme="light">
 <head>
   <meta charset="utf-8">
@@ -66,13 +67,15 @@
 
   async function upload(file) {
     try {
-      const meta = await fetch("/backend-api/files", {
+      const meta = await fetch("/backend-api/files/upload_reservations", {
         method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({ file_name: file.name, file_size: file.size, use_case: "my_files" }),
       });
-      const { upload_url } = await meta.json();
+      const { file_id, upload_url } = await meta.json();
       const r = await fetch(upload_url, { method: "PUT", headers: { "x-ms-blob-type": "BlockBlob", "content-type": file.type || "application/octet-stream" }, body: file });
-      if (r.ok) log("upload-log", file.name); else log("upload-error-log", `${file.name} ${r.status}`);
+      if (!r.ok) { log("upload-error-log", `${file.name} ${r.status}`); return; }
+      await fetch(`/backend-api/files/upload_reservations/${file_id}/claim_and_finish`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+      log("upload-log", file.name);
     } catch (e) { log("upload-error-log", `${file.name} network`); }
   }
 
