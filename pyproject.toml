@@ -1,0 +1,36 @@
+[project]
+name = "upload-guard"
+version = "0.1.0"
+description = "Lightweight DLP for ChatGPT and Perplexity web: native confirmation before sensitive prompts or files leave the browser."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "pypdf>=4.0",
+    "pypdfium2>=4.20",
+    "pillow>=10.0",
+    "pyobjc-framework-Cocoa>=10.0; sys_platform == 'darwin'",
+    "pyobjc-framework-Quartz>=10.0; sys_platform == 'darwin'",
+    "pyobjc-framework-Vision>=10.0; sys_platform == 'darwin'",
+]
+
+[project.scripts]
+upload-guard = "upload_guard.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "reportlab>=4.0",
+    "playwright>=1.45",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/upload_guard"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
