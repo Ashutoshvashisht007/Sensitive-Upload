@@ -4,7 +4,6 @@ version = "0.1.0"
 description = "Lightweight DLP for ChatGPT and Perplexity web: native confirmation before sensitive prompts or files leave the browser."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
 dependencies = [
     "pypdf>=4.0",
     "pypdfium2>=4.20",
