@@ -1,4 +1,4 @@
-"""Draw the extension's shield icon at 16, 48 and 128 px."""
+"""Draw the app's shield icon and the menu-bar template icon."""
 
 from pathlib import Path
 

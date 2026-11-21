@@ -10,7 +10,7 @@
 <style>
   @page { size: A4; margin: 15mm 16mm 16mm;
     @bottom-right { content: counter(page) " / " counter(pages); font: 9pt -apple-system, Helvetica, sans-serif; color: #64748b; } }
-  :root { --ink: #0f172a; --soft: #334155; --dim: #64748b; --line: #e2e8f0; --teal: #0f766e; --tealbg: #f0fdfa; --amber: #b45309; }
+  :root { --ink: #0f172a; --soft: #334155; --dim: #64748b; --line: #e2e8f0; --teal: #0f766e; --tealbg: #f0fdfa; }
   html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   body { font: 10pt/1.45 -apple-system, "Helvetica Neue", Helvetica, sans-serif; color: var(--ink); margin: 0; }
   h1 { font-size: 22pt; margin: 0 0 2pt; letter-spacing: -0.2pt; }
@@ -18,7 +18,7 @@
   h2 { font-size: 13.5pt; margin: 16pt 0 5pt; padding-bottom: 3pt; border-bottom: 1.5pt solid var(--teal); }
   h3 { font-size: 10.5pt; margin: 10pt 0 3pt; color: var(--teal); }
   p { margin: 0 0 6pt; }
-  ul { margin: 0 0 6pt; padding-left: 15pt; } li { margin: 1.5pt 0; }
+  ul, ol { margin: 0 0 6pt; padding-left: 15pt; } li { margin: 1.5pt 0; }
   code { font: 8.6pt Menlo, monospace; background: #f1f5f9; padding: 0.5pt 3pt; border-radius: 3pt; }
   pre { font: 8.3pt/1.4 Menlo, monospace; background: #f8fafc; border: 0.6pt solid var(--line); border-radius: 5pt; padding: 6pt 8pt; margin: 4pt 0 8pt; white-space: pre-wrap; }
   table { border-collapse: collapse; width: 100%; margin: 4pt 0 8pt; font-size: 9pt; }
@@ -27,362 +27,253 @@
   .meta { display: flex; gap: 14pt; color: var(--dim); font-size: 9pt; margin-bottom: 8pt; }
   .box { background: var(--tealbg); border: 0.8pt solid #99f6e4; border-radius: 6pt; padding: 7pt 10pt; margin: 6pt 0 8pt; }
   .keep { break-inside: avoid; }
-  .page { break-before: page; }
   figure { margin: 6pt 0 10pt; break-inside: avoid; }
   figcaption { font-size: 8.5pt; color: var(--dim); margin-top: 3pt; }
   svg { width: 100%; height: auto; display: block; }
   svg text { font-family: -apple-system, Helvetica, sans-serif; }
   .cols { display: flex; gap: 14pt; align-items: flex-start; }
   .cols > * { flex: 1; }
-  .shots { display: flex; gap: 12pt; justify-content: center; margin: 6pt 0; }
-  .shots img { width: 30%; max-width: 165pt; }
+  .shot { text-align: center; margin: 4pt 0; }
+  .shot img { width: 30%; max-width: 165pt; }
   .small { font-size: 9pt; color: var(--soft); }
 </style>
 </head>
 <body>
 
 <h1>Sensitive Upload Guard</h1>
-<p class="subtitle">A native confirmation before sensitive prompts and files reach ChatGPT or Perplexity</p>
+<p class="subtitle">A desktop app that holds prompts and files bound for ChatGPT or Perplexity until a native dialog says Continue</p>
 <div class="meta"><span>Design document</span><span>November 2026</span><span>Code: github.com/Ashutoshvashisht007/Sensitive-Upload</span></div>
 
 <h2>1. Problem</h2>
-<p>People paste and upload things into AI chat apps that shouldn't leave the company. The task: a lightweight desktop DLP tool that watches <b>ChatGPT Web</b> and <b>Perplexity Web</b> in a normal browser and inspects outgoing <b>prompts</b> and <b>file uploads</b> (text, PDF, images) for the marker <code>WALLED_SENSITIVE</code>.</p>
+<p>People paste and upload things into AI chat apps that shouldn't leave the company. The task: a lightweight, <b>standalone desktop</b> DLP tool that watches <b>ChatGPT Web</b> and <b>Perplexity Web</b> in a normal browser, with <b>no browser extension</b>. It inspects outgoing <b>prompts</b> and <b>file uploads</b> (text, PDF, images) for <code>WALLED_SENSITIVE</code> <i>before they're sent</i>.</p>
 <ul>
-  <li><b>No marker:</b> the action goes through with no extra step.</li>
-  <li><b>Marker found:</b> a <b>native desktop dialog</b> appears <i>before</i> anything is sent. It says whether the marker is in the prompt or a file, shows an excerpt or the file name, and offers <b>Continue</b> and <b>Cancel</b>.</li>
+  <li><b>Marker found:</b> a <b>native</b> dialog says whether it's in the prompt or a file, shows an excerpt or the file name, and offers <b>Continue</b> and <b>Cancel</b>.</li>
   <li><b>Continue</b> proceeds with the content unchanged.</li>
-  <li><b>Cancel</b> blocks the action, and the user can still edit and retry.</li>
+  <li><b>Cancel</b> blocks it, and the user can still edit and retry.</li>
+  <li><b>No marker:</b> no interruption.</li>
 </ul>
-<p>AI responses on both sites are also recoloured.</p>
+<p>AI answers on both sites are also recoloured.</p>
 
 <h2>2. Approach</h2>
-<div class="box">A <b>Chrome extension</b> is the sensor and enforcer: it catches Send and uploads before the page sees them, holds them, and replays or drops them. A <b>Python desktop app</b> is the inspector and decision-maker: it reads files (with OCR), shows a native macOS dialog and keeps an audit log. They talk over <b>Chrome native messaging</b>, and Chrome starts the app on demand.</div>
+<div class="box">The app routes <b>only</b> the AI sites through a <b>local guard</b>, using the macOS proxy auto-config. It decrypts just those connections with its own locally generated certificate. Each outgoing request is held while its text and file bytes are inspected; if the marker is there, a native dialog decides whether it is forwarded unchanged or answered locally with an error. Nothing is installed in the browser, and every other site goes direct.</div>
 
 <figure>
-<svg viewBox="0 0 680 270" xmlns="http://www.w3.org/2000/svg">
+<svg viewBox="0 0 680 290" xmlns="http://www.w3.org/2000/svg">
   <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#334155"/></marker></defs>
-  <!-- browser -->
-  <rect x="6" y="8" width="300" height="254" rx="10" fill="#f8fafc" stroke="#94a3b8"/>
-  <text x="20" y="30" font-size="12" font-weight="700" fill="#0f172a">Chrome tab</text>
-  <text x="20" y="45" font-size="10" fill="#64748b">chatgpt.com · www.perplexity.ai</text>
-  <rect x="20" y="58" width="272" height="96" rx="7" fill="#f0fdfa" stroke="#0f766e"/>
-  <text x="32" y="77" font-size="11" font-weight="700" fill="#0f766e">Content scripts (isolated world)</text>
-  <text x="32" y="94" font-size="9.5" fill="#334155">capture-phase listeners on window, document_start</text>
-  <text x="32" y="110" font-size="9.5" fill="#334155">marker.js · sites/chatgpt.js · sites/perplexity.js</text>
-  <text x="32" y="125" font-size="9.5" fill="#334155">engine.js (hold · replay · notices)</text>
-  <text x="32" y="140" font-size="9.5" fill="#334155">response-color.js</text>
-  <rect x="20" y="164" width="130" height="38" rx="7" fill="#fff" stroke="#94a3b8"/>
-  <text x="30" y="181" font-size="10" font-weight="600" fill="#0f172a">page-hook.js</text>
-  <text x="30" y="194" font-size="9" fill="#64748b">page world: file inputs</text>
-  <rect x="160" y="164" width="132" height="38" rx="7" fill="#fff" stroke="#94a3b8"/>
-  <text x="170" y="181" font-size="10" font-weight="600" fill="#0f172a">The web app</text>
-  <text x="170" y="194" font-size="9" fill="#64748b">React, editor, uploads</text>
-  <line x1="226" y1="154" x2="226" y2="162" stroke="#334155" marker-end="url(#a)"/>
-  <text x="20" y="224" font-size="9" fill="#64748b">Clean prompts: checked here, in microseconds,</text>
-  <text x="20" y="237" font-size="9" fill="#64748b">never leave the page for inspection.</text>
-  <text x="20" y="250" font-size="9" fill="#64748b">Held actions: replayed on Continue, dropped on Cancel.</text>
-  <!-- service worker -->
-  <rect x="330" y="88" width="120" height="66" rx="8" fill="#fff" stroke="#94a3b8"/>
-  <text x="342" y="108" font-size="11" font-weight="700" fill="#0f172a">Service worker</text>
-  <text x="342" y="123" font-size="9" fill="#64748b">background.js</text>
-  <text x="342" y="137" font-size="9" fill="#64748b">one port · request ids</text>
-  <text x="342" y="149" font-size="9" fill="#64748b">badge ✓ / !</text>
-  <line x1="292" y1="110" x2="328" y2="110" stroke="#334155" marker-end="url(#a)"/>
-  <text x="296" y="102" font-size="8" fill="#64748b">message</text>
-  <!-- host -->
-  <rect x="474" y="8" width="200" height="254" rx="10" fill="#f8fafc" stroke="#94a3b8"/>
-  <text x="488" y="30" font-size="12" font-weight="700" fill="#0f172a">Desktop app (Python)</text>
-  <text x="488" y="45" font-size="10" fill="#64748b">native messaging host</text>
-  <rect x="488" y="58" width="172" height="52" rx="7" fill="#fff" stroke="#94a3b8"/>
-  <text x="498" y="76" font-size="10" font-weight="600" fill="#0f172a">detect/</text>
-  <text x="498" y="90" font-size="9" fill="#334155">text · PDF · image · zip</text>
-  <text x="498" y="103" font-size="9" fill="#334155">OCR: macOS Vision → tesseract</text>
-  <rect x="488" y="118" width="172" height="52" rx="7" fill="#fffbeb" stroke="#b45309"/>
-  <text x="498" y="136" font-size="10" font-weight="600" fill="#b45309">Native dialog (NSAlert)</text>
-  <text x="498" y="150" font-size="9" fill="#334155">over full-screen apps</text>
-  <text x="498" y="163" font-size="9" fill="#334155">Cancel is the default</text>
-  <rect x="488" y="178" width="172" height="40" rx="7" fill="#fff" stroke="#94a3b8"/>
-  <text x="498" y="195" font-size="10" font-weight="600" fill="#0f172a">~/.upload-guard/</text>
-  <text x="498" y="209" font-size="9" fill="#334155">audit.jsonl (no content) · host.log</text>
-  <text x="488" y="240" font-size="9" fill="#64748b">Started by Chrome when needed;</text>
-  <text x="488" y="252" font-size="9" fill="#64748b">one request at a time (main thread).</text>
-  <line x1="450" y1="116" x2="472" y2="116" stroke="#334155" marker-end="url(#a)" marker-start="url(#a)"/>
-  <text x="449" y="170" font-size="8" fill="#64748b" transform="rotate(-90 456 170)">stdin / stdout</text>
+  <rect x="6" y="70" width="128" height="78" rx="10" fill="#f8fafc" stroke="#94a3b8"/>
+  <text x="18" y="94" font-size="12" font-weight="700">Chrome</text>
+  <text x="18" y="110" font-size="9.5" fill="#64748b">normal profile</text>
+  <text x="18" y="124" font-size="9.5" fill="#64748b">nothing installed</text>
+  <text x="18" y="138" font-size="9.5" fill="#64748b">Edge · Brave · Safari</text>
+  <rect x="160" y="70" width="128" height="78" rx="10" fill="#fff" stroke="#94a3b8" stroke-dasharray="4 3"/>
+  <text x="172" y="92" font-size="11" font-weight="700">Proxy auto-config</text>
+  <text x="172" y="108" font-size="9" fill="#334155">AI hosts → 127.0.0.1:8899</text>
+  <text x="172" y="122" font-size="9" fill="#334155">everything else → DIRECT</text>
+  <text x="172" y="136" font-size="9" fill="#64748b">(set by install)</text>
+  <line x1="134" y1="109" x2="158" y2="109" stroke="#334155" marker-end="url(#a)"/>
+  <rect x="312" y="8" width="230" height="246" rx="10" fill="#f0fdfa" stroke="#0f766e"/>
+  <text x="324" y="30" font-size="12" font-weight="700" fill="#0f766e">Sensitive Upload Guard</text>
+  <text x="324" y="45" font-size="9.5" fill="#334155">menu-bar app, starts at login</text>
+  <rect x="324" y="56" width="206" height="48" rx="7" fill="#fff" stroke="#94a3b8"/>
+  <text x="334" y="73" font-size="10" font-weight="600">guard proxy (mitmproxy)</text>
+  <text x="334" y="87" font-size="9" fill="#334155">decrypts only AI hosts, own local CA</text>
+  <text x="334" y="99" font-size="9" fill="#334155">holds each request until checked</text>
+  <rect x="324" y="110" width="100" height="48" rx="7" fill="#fff" stroke="#94a3b8"/>
+  <text x="332" y="127" font-size="10" font-weight="600">detect/</text>
+  <text x="332" y="141" font-size="8.5" fill="#334155">text · PDF · image</text>
+  <text x="332" y="153" font-size="8.5" fill="#334155">Vision OCR</text>
+  <rect x="430" y="110" width="100" height="48" rx="7" fill="#fffbeb" stroke="#b45309"/>
+  <text x="438" y="127" font-size="10" font-weight="600" fill="#b45309">NSAlert</text>
+  <text x="438" y="141" font-size="8.5" fill="#334155">main thread</text>
+  <text x="438" y="153" font-size="8.5" fill="#334155">over full screen</text>
+  <rect x="324" y="164" width="206" height="40" rx="7" fill="#fff" stroke="#94a3b8"/>
+  <text x="334" y="181" font-size="10" font-weight="600">pages on the way back</text>
+  <text x="334" y="195" font-size="9" fill="#334155">+ &lt;style&gt; recolouring AI answers</text>
+  <text x="324" y="222" font-size="9" fill="#64748b">Continue: forward byte for byte</text>
+  <text x="324" y="236" font-size="9" fill="#64748b">Cancel: answer 403 locally, nothing sent</text>
+  <text x="324" y="250" font-size="9" fill="#64748b">audit log: decisions, never content</text>
+  <line x1="288" y1="96" x2="310" y2="80" stroke="#334155" marker-end="url(#a)"/>
+  <text x="270" y="68" font-size="8" fill="#64748b">AI hosts</text>
+  <rect x="566" y="40" width="108" height="60" rx="10" fill="#fff" stroke="#94a3b8"/>
+  <text x="576" y="62" font-size="10.5" font-weight="700">chatgpt.com</text>
+  <text x="576" y="76" font-size="10.5" font-weight="700">perplexity.ai</text>
+  <text x="576" y="91" font-size="9" fill="#64748b">+ upload storage</text>
+  <line x1="542" y1="70" x2="564" y2="70" stroke="#334155" marker-end="url(#a)"/>
+  <rect x="566" y="150" width="108" height="44" rx="10" fill="#fff" stroke="#94a3b8"/>
+  <text x="576" y="170" font-size="10.5" font-weight="700">other sites</text>
+  <text x="576" y="185" font-size="9" fill="#64748b">never touch the app</text>
+  <path d="M224,148 L224,276 L620,276 L620,196" fill="none" stroke="#334155" stroke-dasharray="4 3" marker-end="url(#a)"/>
+  <text x="230" y="270" font-size="8" fill="#64748b">DIRECT (everything else)</text>
 </svg>
-<figcaption>Figure 1. Components. The extension holds the action; the desktop app inspects and decides.</figcaption>
+<figcaption>Figure 1. Components. Only the AI sites are routed through the app; it inspects and decides before anything is sent.</figcaption>
 </figure>
 
 <div class="keep">
-<h3>Alternatives I ruled out</h3>
+<h3>Alternatives I considered</h3>
 <table>
-<tr><th style="width:26%">Option</th><th>Why not</th></tr>
-<tr><td>HTTPS proxy (MITM)</td><td>Needs a trusted root CA on the machine. Blocking at the network level leaves the app half-sent and in an error state, with no clean retry. Uploads are often chunked by then.</td></tr>
-<tr><td>Driving Chrome over its debugging port</td><td>Needs a special profile and leaves a debug port open. Not "a normal browser".</td></tr>
-<tr><td>Embedded browser</td><td>Not a normal browser either, and Google sign-in blocks embedded web views.</td></tr>
+<tr><th style="width:27%">Option</th><th>Why not</th></tr>
+<tr><td>Browser extension</td><td>Excluded by the brief. My first version was one, so the detection, dialog and tests carried over.</td></tr>
+<tr><td>App-launched Chrome over the DevTools protocol</td><td>Since Chrome 136 this needs a separate profile, so the user signs in again: not their normal browser. It's also fragile against bot checks.</td></tr>
+<tr><td>Accessibility API and key taps</td><td>Can't see file bytes reliably, can't recolour answers, and breaks easily.</td></tr>
+<tr><td>Embedded browser</td><td>Not a normal browser, and Google sign-in blocks embedded web views.</td></tr>
 </table>
 </div>
 
-<div class="keep"><h2>3. Interception: getting there first</h2>
-<p>Every content script runs at <code>document_start</code>. <code>engine.js</code> registers <b>capture-phase listeners on <code>window</code></b> for <code>keydown</code>, <code>click</code>, <code>submit</code>, <code>input</code>, <code>change</code>, <code>drop</code> and <code>paste</code>. An event's capture phase starts at <code>window</code>, so these run before anything the page adds further down: React's root listeners and the editors' own handlers (ProseMirror on ChatGPT, Lexical on Perplexity). To stop an action the engine calls <code>preventDefault()</code> and <code>stopImmediatePropagation()</code>, so the page never sees it and its state stays as it was.</p>
-
-<figure>
-<svg viewBox="0 0 680 92" xmlns="http://www.w3.org/2000/svg">
-  <defs><marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#334155"/></marker></defs>
-  <rect x="6" y="18" width="150" height="44" rx="8" fill="#f0fdfa" stroke="#0f766e"/>
-  <text x="18" y="37" font-size="10.5" font-weight="700" fill="#0f766e">window (capture)</text>
-  <text x="18" y="52" font-size="9" fill="#334155">Sensitive Upload Guard</text>
-  <rect x="182" y="18" width="150" height="44" rx="8" fill="#fff" stroke="#94a3b8"/>
-  <text x="194" y="37" font-size="10.5" font-weight="600" fill="#0f172a">document · app root</text>
-  <text x="194" y="52" font-size="9" fill="#64748b">React's listeners</text>
-  <rect x="358" y="18" width="150" height="44" rx="8" fill="#fff" stroke="#94a3b8"/>
-  <text x="370" y="37" font-size="10.5" font-weight="600" fill="#0f172a">editor / button</text>
-  <text x="370" y="52" font-size="9" fill="#64748b">ProseMirror · Lexical</text>
-  <rect x="534" y="18" width="140" height="44" rx="8" fill="#fff" stroke="#94a3b8"/>
-  <text x="546" y="37" font-size="10.5" font-weight="600" fill="#0f172a">default action</text>
-  <text x="546" y="52" font-size="9" fill="#64748b">send · newline · upload</text>
-  <line x1="156" y1="40" x2="180" y2="40" stroke="#334155" marker-end="url(#b)"/>
-  <line x1="332" y1="40" x2="356" y2="40" stroke="#334155" marker-end="url(#b)"/>
-  <line x1="508" y1="40" x2="532" y2="40" stroke="#334155" marker-end="url(#b)"/>
-  <text x="6" y="84" font-size="9" fill="#64748b">Held events stop at the first box. On Continue the engine replays the action; while it does, a bypass counter lets the replayed event through.</text>
-</svg>
-<figcaption>Figure 2. Event path. Listeners on window run first in the capture phase.</figcaption>
-</figure>
-</div>
-
-<pre>// Events the engine dispatches itself pass straight through.
-// click() and dispatchEvent() are synchronous, so a counter is enough.
-let bypass = 0;
-function replay(fn) { bypass++; try { fn(); } finally { bypass--; } }</pre>
-
-<div class="keep"><h3>Prompts</h3>
-<figure>
-<svg viewBox="0 0 680 230" xmlns="http://www.w3.org/2000/svg">
-  <defs><marker id="c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#334155"/></marker></defs>
-  <g font-size="10" font-weight="700" fill="#0f172a">
-    <text x="30" y="14">User</text><text x="150" y="14">Content script</text><text x="330" y="14">Web app</text><text x="452" y="14">Desktop app</text><text x="590" y="14">Dialog</text>
-  </g>
-  <g stroke="#cbd5e1" stroke-dasharray="3 3"><line x1="45" y1="20" x2="45" y2="226"/><line x1="185" y1="20" x2="185" y2="226"/><line x1="350" y1="20" x2="350" y2="226"/><line x1="485" y1="20" x2="485" y2="226"/><line x1="610" y1="20" x2="610" y2="226"/></g>
-  <g stroke="#334155" font-size="9" fill="#334155">
-    <line x1="45" y1="36" x2="183" y2="36" marker-end="url(#c)"/><text x="52" y="31" stroke="none">Enter / Send / submit</text>
-    <rect x="190" y="42" width="150" height="16" rx="3" fill="#f0fdfa" stroke="#0f766e"/><text x="196" y="54" stroke="none" fill="#0f766e">marker check, local, synchronous</text>
-    <line x1="185" y1="74" x2="348" y2="74" marker-end="url(#c)"/><text x="192" y="70" stroke="none">clean: event continues untouched</text>
-    <line x1="185" y1="98" x2="483" y2="98" marker-end="url(#c)"/><text x="192" y="94" stroke="none">found: hold event; {type:"prompt", text} via service worker</text>
-    <rect x="490" y="104" width="112" height="16" rx="3" fill="#fff" stroke="#94a3b8"/><text x="495" y="116" stroke="none">re-check with Python rules</text>
-    <line x1="485" y1="132" x2="608" y2="132" marker-end="url(#c)"/><text x="492" y="128" stroke="none">NSAlert: excerpt</text>
-    <line x1="610" y1="150" x2="487" y2="150" marker-end="url(#c)"/><text x="512" y="146" stroke="none">Continue / Cancel</text>
-    <line x1="485" y1="168" x2="187" y2="168" marker-end="url(#c)"/><text x="300" y="164" stroke="none">{decision}  (audit line written)</text>
-    <line x1="185" y1="190" x2="348" y2="190" marker-end="url(#c)"/><text x="192" y="186" stroke="none">Continue: replay click / submit</text>
-    <text x="192" y="210" stroke="none">Cancel: nothing sent; text stays; notice</text>
-  </g>
-</svg>
-<figcaption>Figure 3. Prompt flow. Clean prompts never wait for the desktop app.</figcaption>
-</figure>
-</div>
-<ul class="small">
-  <li><b>Triggers:</b> Enter (not Shift+Enter, not mid-IME), the adapter's Send button, a button labelled Send/Submit next to a composer, or a form submit.</li>
-  <li><b>While a dialog is open,</b> further sends from that composer are swallowed.</li>
-  <li><b>On Continue,</b> the text must be unchanged, and the approved text may pass again for 5 s in case the app resubmits.</li>
-</ul>
-
 <div class="keep">
-<h3>Files</h3>
-<table>
-<tr><th style="width:18%">Path</th><th style="width:42%">Hold</th><th>Replay on Continue</th></tr>
-<tr><td>File picker</td><td>Stop <code>input</code> and <code>change</code> at window; note which fired</td><td>Dispatch them again. Partial cancel: set <code>input.files</code> to a <code>DataTransfer</code> of the allowed files first</td></tr>
-<tr><td>Drag and drop</td><td>Stop the <code>drop</code>; copy the files at once (the DataTransfer locks after the event)</td><td>New <code>DragEvent('drop')</code> with a rebuilt DataTransfer at the same target and position. On Cancel, a <code>dragleave</code> clears the app's overlay</td></tr>
-<tr><td>Paste with files</td><td>Stop the <code>paste</code>; copy files and any text/HTML</td><td>New <code>ClipboardEvent('paste')</code> with a rebuilt DataTransfer</td></tr>
-</table>
-<ul class="small">
-  <li><b>Inspection:</b> files are read with <code>arrayBuffer()</code>, base64-encoded in chunks and sent in one <code>files</code> request. Anything over 25 MB is sent without its bytes, so the app asks instead of passing it.</li>
-  <li><b>After a cancelled pick,</b> <code>input.value</code> is reset so picking the same file again works.</li>
-  <li><b>Detached inputs:</b> some upload libraries click an <code>&lt;input type=file&gt;</code> that isn't in the document. <code>page-hook.js</code> runs in the page's own world and moves such inputs into a hidden holder just before the picker opens, so their events reach window too.</li>
-</ul>
-</div>
-
-<div class="keep">
-<h3>Site adapters and response colour</h3>
-<p><code>sites/chatgpt.js</code> and <code>sites/perplexity.js</code> hold <b>selectors only</b>: composers, send buttons and response containers, each tried in order. I checked them against the live sites in November 2026 with a recon snippet that reads attributes only, never text. Both sites had changed since the first guesses:</p>
-<ul class="small">
-  <li><b>ChatGPT:</b> <code>[data-composer-input] [contenteditable]</code>, <code>button[type=submit][aria-label=Send]</code>, and answers in <code>[data-markdown-text-style="assistant-message"]</code>.</li>
-  <li><b>Perplexity:</b> a <code>role=textbox</code> editor, <code>aria-label=Submit</code>, and answers in <code>.prose</code>.</li>
-</ul>
-<p><code>response-color.js</code> injects one stylesheet built from those selectors: teal <code>#0f766e</code> in light themes and <code>#5eead4</code> in dark ones. It follows <code>&lt;html data-theme&gt;</code> on ChatGPT and <code>data-color-scheme</code> on Perplexity, falling back to the system setting. Because it matches containers, streaming text picks up the colour too.</p>
-</div>
-
-<div class="keep"><h2>4. Detection</h2>
-<figure>
-<svg viewBox="0 0 680 200" xmlns="http://www.w3.org/2000/svg">
-  <defs><marker id="d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#334155"/></marker></defs>
-  <rect x="6" y="80" width="88" height="40" rx="7" fill="#fff" stroke="#94a3b8"/><text x="16" y="98" font-size="10" font-weight="600">bytes + name</text><text x="16" y="111" font-size="9" fill="#64748b">+ MIME</text>
-  <rect x="116" y="80" width="96" height="40" rx="7" fill="#fff" stroke="#94a3b8"/><text x="124" y="98" font-size="10" font-weight="600">sniff type</text><text x="124" y="111" font-size="9" fill="#64748b">magic bytes first</text>
-  <line x1="94" y1="100" x2="114" y2="100" stroke="#334155" marker-end="url(#d)"/>
-  <g font-size="9" fill="#334155">
-    <rect x="240" y="6" width="196" height="34" rx="6" fill="#fff" stroke="#94a3b8"/><text x="248" y="20" font-weight="600" fill="#0f172a">Text</text><text x="248" y="33">BOM / UTF-8 / UTF-16 + raw-bytes scan</text>
-    <rect x="240" y="46" width="196" height="46" rx="6" fill="#fff" stroke="#94a3b8"/><text x="248" y="60" font-weight="600" fill="#0f172a">PDF</text><text x="248" y="73">pypdf text + metadata (pdfium fallback)</text><text x="248" y="86">scanned or image pages → render, OCR</text>
-    <rect x="240" y="98" width="196" height="34" rx="6" fill="#fff" stroke="#94a3b8"/><text x="248" y="112" font-weight="600" fill="#0f172a">Image</text><text x="248" y="125">metadata (PNG text, EXIF) + OCR</text>
-    <rect x="240" y="138" width="196" height="34" rx="6" fill="#fff" stroke="#94a3b8"/><text x="248" y="152" font-weight="600" fill="#0f172a">ZIP / Office</text><text x="248" y="165">XML with tags stripped; entries recursed</text>
-    <text x="248" y="190" fill="#64748b">other binary: raw-bytes scan</text>
-  </g>
-  <g stroke="#334155"><line x1="212" y1="100" x2="238" y2="23" marker-end="url(#d)"/><line x1="212" y1="100" x2="238" y2="69" marker-end="url(#d)"/><line x1="212" y1="100" x2="238" y2="115" marker-end="url(#d)"/><line x1="212" y1="100" x2="238" y2="155" marker-end="url(#d)"/></g>
-  <rect x="462" y="70" width="98" height="60" rx="7" fill="#f0fdfa" stroke="#0f766e"/><text x="470" y="90" font-size="10" font-weight="700" fill="#0f766e">marker rules</text><text x="470" y="104" font-size="9" fill="#334155">exact (text)</text><text x="470" y="117" font-size="9" fill="#334155">tolerant (OCR)</text>
-  <g stroke="#334155"><line x1="436" y1="23" x2="460" y2="86" marker-end="url(#d)"/><line x1="436" y1="69" x2="460" y2="94" marker-end="url(#d)"/><line x1="436" y1="115" x2="460" y2="104" marker-end="url(#d)"/><line x1="436" y1="155" x2="460" y2="114" marker-end="url(#d)"/></g>
-  <g font-size="9.5">
-    <rect x="584" y="22" width="92" height="40" rx="6" fill="#fff" stroke="#94a3b8"/><text x="592" y="39" font-weight="600">clean</text><text x="592" y="53" fill="#64748b">replay silently</text>
-    <rect x="584" y="80" width="92" height="40" rx="6" fill="#fffbeb" stroke="#b45309"/><text x="592" y="97" font-weight="600" fill="#b45309">found</text><text x="592" y="111" fill="#64748b">dialog + where</text>
-    <rect x="584" y="138" width="92" height="40" rx="6" fill="#fffbeb" stroke="#b45309"/><text x="592" y="155" font-weight="600" fill="#b45309">can't inspect</text><text x="592" y="169" fill="#64748b">dialog asks why</text>
-  </g>
-  <g stroke="#334155"><line x1="560" y1="92" x2="582" y2="44" marker-end="url(#d)"/><line x1="560" y1="100" x2="582" y2="100" marker-end="url(#d)"/><line x1="560" y1="108" x2="582" y2="156" marker-end="url(#d)"/></g>
-</svg>
-<figcaption>Figure 4. Detection pipeline in the desktop app. If in doubt, ask: a file that can't be read is never treated as clean.</figcaption>
-</figure>
-</div>
-
-<div class="cols keep">
-<div>
-<h3>Marker rules</h3>
-<p>One set of rules, written twice: <code>marker.py</code>, and a line-for-line port <code>marker.js</code> for the in-page prompt check. Both run against the same 30 test vectors.</p>
-<ul class="small">
-  <li><b>Exact</b> (prompts, text, metadata): NFKC-normalise, strip zero-width characters and soft hyphens, then match <code>WALLED_SENSITIVE</code> case-insensitively.</li>
-  <li><b>OCR-tolerant</b> (text from images and scans): also accepts
-    <ul>
-      <li><code>1 l | !</code> for I and L, <code>5 $</code> for S and <code>VV</code> for W;</li>
-      <li>a stray character between letters;</li>
-      <li>a space or nothing where the underscore was.</li>
-    </ul>
-  </li>
-  <li><b>Excerpts</b> show about 40 characters either side of the hit.</li>
-</ul>
-</div>
-<div>
-<h3>OCR</h3>
-<p><b>macOS Vision</b> comes first: on-device and accurate, with language correction off so the marker isn't "corrected". The host warms it up at start-up. <code>tesseract</code> is the fallback.</p>
-<ul class="small">
-  <li>Small images are retried at 2–3× size.</li>
-  <li>PDF pages are rendered at 2× with pdfium, up to 15 pages.</li>
-  <li>Measured times: a clean PDF in about 2 ms, a text image in about 40 ms, a two-page scan in about 0.3 s.</li>
-</ul>
-</div>
-</div>
-
-<div class="keep">
-<h3>When the app asks instead of deciding</h3>
-<p class="small">These files come back as <i>uninspectable</i> and get a dialog that says why:</p>
-<ul class="small">
-  <li>files over 25 MB;</li>
-  <li>password-protected PDFs or archives;</li>
-  <li>damaged files;</li>
-  <li>zip bombs (over 500 entries or 200 MB unpacked);</li>
-  <li>no OCR engine available;</li>
-  <li>scanned pages beyond the OCR limit;</li>
-  <li>any parser error.</li>
-</ul>
-<p class="small"><code>fail_mode: "open"</code> in <code>~/.upload-guard/config.json</code> lets uninspectable files pass instead. It's off by default.</p>
-</div>
-
-<div class="keep"><h2>5. The native dialog</h2>
-<div class="shots"><img src="img/dialog-prompt.png" alt="Prompt dialog"><img src="img/dialog-file.png" alt="File dialog"></div>
-<p class="small" style="text-align:center">Real dialogs from the demo recording, on Perplexity.</p>
-<ul class="small">
-  <li><b>Cancel is the default button:</b> Return and Esc both choose it.</li>
-  <li><b>Several flagged files</b> get one dialog that lists them all. Its text says Cancel removes only those files and the others still upload.</li>
-</ul>
-</div>
-
-<div class="keep">
-<h3>Showing it over full-screen Chrome</h3>
-<p>A full-screen app lives in its own Space, and other apps' windows don't appear there. Four fixes were needed. Each was found by testing, not assumed.</p>
-<ol class="small">
-  <li><b>Agent app.</b> The host is an accessory app: it has no Dock icon and is allowed into other Spaces.</li>
-  <li><b>Space behaviour and level.</b> The alert window gets <code>CanJoinAllSpaces | FullScreenAuxiliary</code> and status-bar level 25. <code>runModal</code> quietly drops the level to 8, so a timer in the modal run loop sets it back, along with <code>orderFrontRegardless</code> and <code>makeKeyWindow</code>.</li>
-  <li><b>Right display.</b> Chrome is the host's parent process. The alert is centred on the display showing Chrome's front window, found through <code>CGWindowList</code>. The first version opened on the other monitor.</li>
-  <li><b>Close cleanly.</b> After <code>runModal</code> returns, the host orders the window out and runs the event loop for 150 ms, then hands focus back to Chrome. Without this the dialog stayed frozen on screen after a click. I found that in the live test.</li>
-</ol>
-<p class="small">Without screen recording, <code>scripts/check_fullscreen_dialog.py</code> uses <code>CGWindowList</code> and <code>NSWorkspace</code> to check the result. It confirms the dialog is on top of a native full-screen window, on the same display, at level 25, with keyboard focus, and that the full-screen window never left the screen. <code>check_dialog_closes.py</code> answers a real dialog and checks nothing is left behind. If PyObjC is missing, an <code>osascript</code> fallback passes all text as <code>argv</code>, so a file name can't inject AppleScript.</p>
-</div>
-
-<div class="keep"><h2>6. Protocol and failure modes</h2>
+<h2>3. Getting the traffic</h2>
 <div class="cols">
 <div>
-<h3>Native messaging</h3>
+<h3>Routing</h3>
+<p class="small"><code>install</code> sets a proxy auto-config on every network service, as a <code>data:</code> URL, so it never depends on a server being up:</p>
 <ul class="small">
-  <li><b>Framing:</b> a 4-byte native-endian length, then UTF-8 JSON, in both directions.</li>
-  <li><b>stdout</b> carries protocol frames only. The host keeps a private copy of fd 1 and points fd 1 at stderr, so a stray print can't corrupt the stream.</li>
-  <li><b>Threads:</b> a reader thread answers pings at once and queues everything else for the main thread, which AppKit requires. Dialogs therefore queue one at a time.</li>
-  <li><b>Service worker:</b> one port, opened on first use. Replies are matched by request id. If the port drops, every waiting request is answered with <code>host_unavailable</code>.</li>
-  <li><b>Who can connect:</b> the extension ID is fixed by the <code>key</code> in the manifest, and the host's <code>allowed_origins</code> lists only that ID. The launcher runs Python with <code>-I</code>.</li>
+  <li><b>ChatGPT and Perplexity</b> (including <code>*.oaiusercontent.com</code> and Perplexity's S3 upload bucket) go to <code>127.0.0.1:8899</code>.</li>
+  <li><b>Everything else</b> goes <code>DIRECT</code>.</li>
+  <li><b>No fallback for the AI hosts,</b> so if the app is down they fail closed while the rest of the web works.</li>
+  <li><b>Previous settings</b> are backed up and restored by <code>uninstall</code>.</li>
 </ul>
 </div>
 <div>
-<pre>→ {id, type:"ping"}
-← {id, ok:true, version, max_inspect_mb}
-
-→ {id, type:"prompt", site, text}
-← {id, decision:"continue"|"cancel", found}
-
-→ {id, type:"files", site,
-    files:[{name, mime, size,
-            b64|null}]}
-← {id, decision, dialog,
-    results:[{index, name,
-      found, uninspectable,
-      where, decision}]}</pre>
+<h3>Decryption</h3>
+<ul class="small">
+  <li><b>Local CA.</b> On first run the app creates "Sensitive Upload Guard local CA", and <code>install</code> trusts it in the login keychain.</li>
+  <li><b>Narrow.</b> mitmproxy decrypts only the routed hosts (<code>allow_hosts</code>) and opens its own verified TLS connection to the real site.</li>
+  <li><b>Key stays local</b> in <code>~/.upload-guard/ca</code> (mode 0700).</li>
+  <li><b>Bot protection:</b> I checked a fresh Chromium against the public pages of both sites, directly and through the guard. Same status and title, composer present, no challenge, no page errors.</li>
+</ul>
 </div>
 </div>
 </div>
 
 <div class="keep">
+<h2>4. Holding and deciding</h2>
+<p>mitmproxy hands every request on a routed host to <code>GuardAddon</code> <b>before</b> anything goes upstream. Its hooks are <code>async</code>, so one request can wait for the user while other traffic flows.</p>
+<figure>
+<svg viewBox="0 0 680 200" xmlns="http://www.w3.org/2000/svg">
+  <defs><marker id="c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#334155"/></marker></defs>
+  <g font-size="10" font-weight="700"><text x="16" y="14">Chrome</text><text x="182" y="14">Guard (proxy thread)</text><text x="372" y="14">Main thread</text><text x="560" y="14">chatgpt.com</text></g>
+  <g stroke="#cbd5e1" stroke-dasharray="3 3"><line x1="38" y1="20" x2="38" y2="196"/><line x1="240" y1="20" x2="240" y2="196"/><line x1="410" y1="20" x2="410" y2="196"/><line x1="595" y1="20" x2="595" y2="196"/></g>
+  <g stroke="#334155" font-size="9" fill="#334155">
+    <line x1="38" y1="36" x2="238" y2="36" marker-end="url(#c)"/><text x="46" y="31" stroke="none">POST /backend-api/f/conversation</text>
+    <rect x="246" y="42" width="150" height="16" rx="3" fill="#f0fdfa" stroke="#0f766e"/><text x="252" y="54" stroke="none" fill="#0f766e">extract text · marker check</text>
+    <line x1="240" y1="74" x2="593" y2="74" marker-end="url(#c)"/><text x="420" y="70" stroke="none">clean: forward untouched</text>
+    <line x1="240" y1="98" x2="408" y2="98" marker-end="url(#c)"/><text x="248" y="94" stroke="none">found: hold; ask (one per content)</text>
+    <rect x="416" y="104" width="120" height="16" rx="3" fill="#fffbeb" stroke="#b45309"/><text x="422" y="116" stroke="none" fill="#b45309">NSAlert: excerpt</text>
+    <line x1="410" y1="132" x2="242" y2="132" marker-end="url(#c)"/><text x="268" y="128" stroke="none">Continue / Cancel</text>
+    <line x1="240" y1="156" x2="593" y2="156" marker-end="url(#c)"/><text x="420" y="152" stroke="none">Continue: original bytes</text>
+    <line x1="240" y1="180" x2="40" y2="180" marker-end="url(#c)"/><text x="60" y="176" stroke="none">Cancel: 403 "Blocked by Sensitive Upload Guard"</text>
+  </g>
+</svg>
+<figcaption>Figure 2. A prompt request with the marker. Uploads work the same way with file bytes instead of text.</figcaption>
+</figure>
 <table>
-<tr><th style="width:42%">Situation</th><th>What happens</th></tr>
-<tr><td>Clean prompt, app not running</td><td>Sent normally: the check in the page doesn't need the app</td></tr>
-<tr><td>Prompt with marker, app not running</td><td>Blocked, with an in-page notice: "Sensitive Upload Guard app isn't running, blocked"</td></tr>
-<tr><td>Any file, app not running</td><td>Blocked, because it can't be inspected, with the same notice</td></tr>
-<tr><td>Extension reloaded under an open tab</td><td>Blocked; the notice asks you to reload the page</td></tr>
-<tr><td>File can't be inspected</td><td>Dialog explains why and asks</td></tr>
-<tr><td>Host crashes mid-request</td><td>Port drops → waiting requests fail → blocked</td></tr>
-<tr><td>Prompt edited while the dialog is open</td><td>Not sent on Continue; Enter re-checks the new text</td></tr>
-<tr><td>Two actions at once</td><td>Queued; one dialog at a time</td></tr>
+<tr><th style="width:20%">Kind</th><th style="width:42%">Recognised by</th><th>Then</th></tr>
+<tr><td>Upload</td><td>Multipart part with a filename, or PUT/POST bytes to an upload host</td><td>Detectors on a worker thread (OCR never stalls the proxy). File name from the part, the set-up request, or the URL. Dialog if flagged</td></tr>
+<tr><td>Send</td><td>The site's send endpoint, or any POST/PUT whose text contains the marker</td><td>Dialog with about 40 characters either side of the marker</td></tr>
+<tr><td>Background</td><td>A GET whose URL carries the marker (typeahead while typing)</td><td>Blocked with no dialog: the marker never leaves, and the user isn't interrupted mid-sentence</td></tr>
+<tr><td>Too large</td><td>Content-Length over 25 MB</td><td>Asked at the headers stage; if allowed, streamed without inspection</td></tr>
+<tr><td>Clean</td><td>Everything else</td><td>Forwarded untouched</td></tr>
 </table>
-</div>
-
-<div class="keep">
-<h2>7. Security and privacy</h2>
-<ul>
-  <li><b>Local only.</b> Everything is inspected on the machine, and Vision OCR runs on-device. Content reaches only the site the user chose, and only once allowed.</li>
-  <li><b>No content in logs.</b> The audit log (<code>~/.upload-guard/audit.jsonl</code>, mode 0600) records time, site, kind, file name or prompt length, where the marker was, and the decision. Debug logging records decisions and sizes.</li>
-  <li><b>Minimal permissions.</b> The extension asks for <code>nativeMessaging</code> and <code>storage</code>, plus host access to the two sites.</li>
-  <li><b>A guardrail, not a hard boundary.</b> It catches mistakes, but a user can disable the extension. A company deployment would force-install it with Chrome policy.</li>
+<ul class="small">
+  <li><b>Keys:</b> decisions are keyed on the content itself, the prompt text or the sha256 of the file. Parallel requests carrying the same content wait on one dialog.</li>
+  <li><b>Memory:</b> Continue is remembered for 10 minutes, so retries aren't asked again. Cancel is remembered for 1.5 s, only to absorb those parallel duplicates.</li>
+  <li><b>Cancel's reply</b> carries CORS headers for the page, so the site's own error handling shows the message.</li>
 </ul>
 </div>
 
 <div class="keep">
-<h2>8. Testing</h2>
+<h2>5. Detection</h2>
+<div class="cols">
+<div>
+<h3>Marker rules</h3>
+<ul class="small">
+  <li><b>Exact</b> (prompts, text, metadata): NFKC-normalise, drop zero-width characters and soft hyphens, then match <code>WALLED_SENSITIVE</code> case-insensitively.</li>
+  <li><b>OCR-tolerant</b> (text from images and scans): also accepts <code>1 l | !</code> for I and L, <code>5 $</code> for S and <code>VV</code> for W, a stray character between letters, and a space where the underscore was.</li>
+</ul>
+<h3>OCR</h3>
+<p class="small">macOS Vision: on-device, with language correction off so the marker isn't "corrected". tesseract is the fallback. Small images are retried enlarged.</p>
+</div>
+<div>
 <table>
-<tr><th style="width:30%">Suite</th><th style="width:10%">Tests</th><th>What it covers</th></tr>
-<tr><td>Marker rules (pytest + node:test)</td><td>30 + 30</td><td>The same vectors against Python and JS: case, zero-width, fullwidth, OCR confusions, near-misses, excerpts</td></tr>
-<tr><td>Detectors</td><td>33</td><td>Generated fixtures:
-  <ul>
-    <li>text: UTF-16 and zero-width;</li>
-    <li>PDF: marker on page 2, scanned, encrypted, damaged;</li>
-    <li>images: PNG, a noisy JPEG photo, PNG metadata;</li>
-    <li>a split-run .docx and a nested zip;</li>
-    <li>tesseract forced, and no OCR at all.</li>
-  </ul></td></tr>
-<tr><td>Native host process</td><td>13</td><td>Real framing over pipes: ping, prompts, files, mixed batches, queueing, bad input, exit on close. Also checks that the osascript argv can't be injected and that the audit log holds no content</td></tr>
-<tr><td>Installer</td><td>5</td><td>A temporary HOME, the manifest contents, the launcher starting the host, and the extension ID matching what Chromium assigns</td></tr>
-<tr><td>Browser end-to-end</td><td>33</td><td>Real extension and real host in Playwright's Chromium. Mock pages that copy the live markup are served <i>as</i> chatgpt.com and perplexity.ai. Covers every acceptance case on both sites, plus drop, paste, re-picking a file, partial cancel and failing closed</td></tr>
-<tr><td>Live</td><td>both sites</td><td>Manual run on the real sites, recorded for the demo</td></tr>
+<tr><th>Type</th><th>Checked by</th></tr>
+<tr><td>Text</td><td>BOM-aware decode + raw-bytes scan → <code>line N</code></td></tr>
+<tr><td>PDF</td><td>pypdf text per page + metadata. Pages with little text or with images are rendered (pdfium) and OCR'd, up to 15 → <code>page N</code> / <code>scanned page N</code></td></tr>
+<tr><td>Image</td><td>Metadata (PNG text, EXIF, XMP) + OCR</td></tr>
+<tr><td>Office / ZIP</td><td>XML with tags stripped; entries recursed; zip-bomb limits</td></tr>
+</table>
+<p class="small">Never passed silently: password-protected, damaged or oversized files, and files no OCR engine can read. Each gets a dialog that says why.</p>
+</div>
+</div>
+</div>
+
+<div class="keep">
+<h2>6. The native dialog</h2>
+<div class="shot"><img src="img/dialog-file.png" alt="File dialog"></div>
+<ul class="small">
+  <li><b>Cancel is the default button:</b> Return and Esc both choose it.</li>
+  <li><b>Over full-screen Chrome,</b> which lives in its own Space:
+    <ul>
+      <li>the app runs as an accessory app;</li>
+      <li>the alert window gets <code>CanJoinAllSpaces | FullScreenAuxiliary</code> and status-bar level 25, restored by a modal-loop timer after <code>runModal</code> lowers it;</li>
+      <li>it's centred on the browser's display;</li>
+      <li>after the answer it's ordered out and the run loop flushed, so it never lingers.</li>
+    </ul>
+  </li>
+  <li><b>Checks:</b> <code>scripts/check_fullscreen_dialog.py</code> verifies this without screen recording, using <code>CGWindowList</code> and <code>NSWorkspace</code>. I also checked in-process that the menu-bar app's main-thread dialog answers a held request within a second.</li>
+</ul>
+</div>
+
+<div class="keep">
+<h2>7. Failure modes</h2>
+<table>
+<tr><th style="width:40%">Situation</th><th>Behaviour</th></tr>
+<tr><td>App not running</td><td>ChatGPT and Perplexity don't load; every other site works</td></tr>
+<tr><td>App crashes</td><td>launchd restarts it (KeepAlive after a crash only, so Quit really quits)</td></tr>
+<tr><td>File can't be inspected</td><td>Dialog explains why and asks</td></tr>
+<tr><td>Dialog can't be shown</td><td>Treated as Cancel</td></tr>
+<tr><td>Upload goes to a host that isn't routed</td><td>Seen in the upload set-up reply; logged, naming the host to add to <code>sites.py</code></td></tr>
+<tr><td>Same content in parallel requests</td><td>One dialog; the answer applies to all</td></tr>
 </table>
 </div>
 
 <div class="keep">
-<h2>9. Limitations and next steps</h2>
+<h2>8. Security and privacy</h2>
 <ul>
-  <li><b>Browsers:</b> Chrome, Chromium, Edge and Brave only. Firefox and Safari need ports.</li>
-  <li><b>Platforms:</b> macOS is built and tested. The Windows and Linux dialogs exist but are untested, and Windows also needs registry-based host registration.</li>
-  <li><b>Selector drift</b> is the main maintenance cost; both sites changed while I was building this. The next step is a network-level backstop: hook <code>fetch</code>/XHR in the page for the known upload and conversation endpoints.</li>
-  <li><b>Upload paths not covered:</b> <code>showOpenFilePicker</code>, file inputs inside shadow DOM, dropped folders and voice prompts. Neither site uses these for normal uploads today.</li>
-  <li><b>OCR</b> can miss tiny or handwritten text, and the tolerant match can occasionally flag the two words "walled sensitive" in an image. Only the first frame of a GIF or TIFF is read.</li>
-  <li><b>Size:</b> files over 25 MB, or past 40 MB in one batch, aren't inspected; the user is asked instead.</li>
+  <li><b>Local only.</b> Inspection and OCR run on the Mac. Content reaches only the site the user chose, and only once allowed.</li>
+  <li><b>Narrow decryption.</b> Only the AI hosts are decrypted. The CA key is generated locally, kept owner-only, and its trust is removed by <code>uninstall</code>.</li>
+  <li><b>No content in logs.</b> The audit log holds time, site, file name or prompt length, where, and the decision. The optional request log holds method, host, path and size.</li>
+  <li><b>A guardrail, not a hard boundary.</b> A company deployment would push the PAC and CA with a configuration profile and lock them.</li>
+</ul>
+</div>
+
+<div class="keep">
+<h2>9. Testing</h2>
+<table>
+<tr><th style="width:24%">Suite</th><th style="width:8%">Tests</th><th>What it covers</th></tr>
+<tr><td>End to end</td><td>20</td><td>Chromium with only the app's PAC goes through the real guard to a local stand-in for both sites, which records what arrives, so "blocked before it was sent" is checked directly. Covers:
+  <ul>
+    <li>clean prompts and files;</li>
+    <li>Cancel and Continue for prompts, and for txt, PDF, scanned PDF and PNG files;</li>
+    <li>typeahead never leaking the marker;</li>
+    <li>oversized files;</li>
+    <li>recolouring under a nonce CSP;</li>
+    <li>other sites going direct, and the AI sites failing closed when the app is down.</li>
+  </ul></td></tr>
+<tr><td>Add-on</td><td>18</td><td>mitmproxy flows: dialog wording, file names from set-up replies and multipart parts, size limits, recolouring</td></tr>
+<tr><td>Units</td><td>37</td><td>Site rules, body parsing, CSP patching, PAC routing evaluated in Node, decision memory</td></tr>
+<tr><td>Installer</td><td>8</td><td>CA, PAC backup and restore, one admin prompt for all services, the login item. System tools are mocked</td></tr>
+<tr><td>Detectors + marker</td><td>33 + 30</td><td>Generated fixtures, including OCR, the tesseract fallback, encrypted and damaged PDFs</td></tr>
+<tr><td>Dialog</td><td>2</td><td>Wording, and the osascript fallback can't be injected</td></tr>
+</table>
+</div>
+
+<div class="keep">
+<h2>10. Limitations and next steps</h2>
+<ul>
+  <li><b>macOS only:</b> the installer, the dialog and OCR use macOS APIs.</li>
+  <li><b>Firefox</b> needs the CA added to its own store. Apps that pin certificates can't be inspected and would fail if routed.</li>
+  <li><b>Cancel shows the site's own error.</b> At the network level the app can't put text back in the site's message box, but the user can edit and resend.</li>
+  <li><b>Endpoints and upload hosts change.</b> The general rules still catch the marker, but a new upload host has to be added to the routing list; the app logs which one.</li>
+  <li><b>OCR</b> can miss tiny or handwritten text, and files over 25 MB aren't inspected. Both ask the user rather than passing silently.</li>
 </ul>
 </div>
 

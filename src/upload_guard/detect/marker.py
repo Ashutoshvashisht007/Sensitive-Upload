@@ -1,7 +1,6 @@
 """Marker rules: the single source of truth for what counts as WALLED_SENSITIVE.
 
-`extension/content/marker.js` is a line-for-line port. Both are run against
-`tests/vectors/marker_cases.json` so they can't drift apart.
+Checked against the shared cases in `tests/vectors/marker_cases.json`.
 
 Two modes:
 - exact (prompts, text files, metadata): NFKC-normalise, drop invisible
