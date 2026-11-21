@@ -21,14 +21,17 @@ from AppKit import (
     NSAlert,
     NSAlertStyleWarning,
     NSApplication,
+    NSDefaultRunLoopMode,
     NSEvent,
+    NSEventMaskAny,
     NSImage,
     NSModalPanelRunLoopMode,
     NSRunLoop,
     NSScreen,
     NSTimer,
 )
-from Foundation import NSObject
+from Foundation import NSDate, NSObject
+from Quartz import CATransaction
 
 from .base import DialogText
 
@@ -87,7 +90,33 @@ class MacDialog:
         NSRunLoop.currentRunLoop().addTimer_forMode_(timer, NSModalPanelRunLoopMode)
 
         self._activate()
-        return alert.runModal() == NS_ALERT_SECOND_BUTTON
+        try:
+            return alert.runModal() == NS_ALERT_SECOND_BUTTON
+        finally:
+            # The host blocks on its request queue next, without running the
+            # AppKit run loop. Close the window and let AppKit process the
+            # change now, or the alert stays frozen on screen.
+            window.orderOut_(None)
+            self._pump(0.15)
+            self._yield_focus()
+
+    def _pump(self, seconds: float) -> None:
+        until = NSDate.dateWithTimeIntervalSinceNow_(seconds)
+        while True:
+            event = self._app.nextEventMatchingMask_untilDate_inMode_dequeue_(
+                NSEventMaskAny, until, NSDefaultRunLoopMode, True
+            )
+            if event is None:
+                break
+            self._app.sendEvent_(event)
+        CATransaction.flush()
+
+    def _yield_focus(self) -> None:
+        """Hand focus back (normally to Chrome) so the user can keep typing."""
+        try:
+            self._app.hide_(None)
+        except Exception:  # noqa: BLE001
+            pass
 
     def _activate(self) -> None:
         try:
