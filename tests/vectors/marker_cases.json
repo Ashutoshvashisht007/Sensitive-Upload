@@ -1,0 +1,185 @@
+{
+  "cases": [
+    {
+      "name": "plain",
+      "text": "please review WALLED_SENSITIVE data",
+      "found": true,
+      "matched": "WALLED_SENSITIVE"
+    },
+    {
+      "name": "lowercase",
+      "text": "walled_sensitive",
+      "found": true,
+      "matched": "walled_sensitive"
+    },
+    {
+      "name": "mixed case",
+      "text": "Walled_Sensitive report",
+      "found": true,
+      "matched": "Walled_Sensitive"
+    },
+    {
+      "name": "inside a word",
+      "text": "xxWALLED_SENSITIVEyy",
+      "found": true,
+      "matched": "WALLED_SENSITIVE"
+    },
+    {
+      "name": "zero-width inside",
+      "text": "WALL\u200bED_SEN\u200dSITIVE",
+      "found": true,
+      "matched": "WALLED_SENSITIVE"
+    },
+    {
+      "name": "soft hyphen and BOM",
+      "text": "WALLED\u00ad_\ufeffSENSITIVE",
+      "found": true,
+      "matched": "WALLED_SENSITIVE"
+    },
+    {
+      "name": "word joiner",
+      "text": "WALLED_\u2060SENSITIVE",
+      "found": true,
+      "matched": "WALLED_SENSITIVE"
+    },
+    {
+      "name": "fullwidth (NFKC)",
+      "text": "\uff37\uff21\uff2c\uff2c\uff25\uff24\uff3f\uff33\uff25\uff2e\uff33\uff29\uff34\uff29\uff36\uff25",
+      "found": true,
+      "matched": "WALLED_SENSITIVE"
+    },
+    {
+      "name": "multiline",
+      "text": "line one\nline two WALLED_SENSITIVE\nline three",
+      "found": true,
+      "matched": "WALLED_SENSITIVE"
+    },
+    {
+      "name": "clean",
+      "text": "nothing to see here",
+      "found": false
+    },
+    {
+      "name": "empty",
+      "text": "",
+      "found": false
+    },
+    {
+      "name": "space instead of underscore (exact)",
+      "text": "WALLED SENSITIVE",
+      "found": false
+    },
+    {
+      "name": "missing underscore (exact)",
+      "text": "WALLEDSENSITIVE",
+      "found": false
+    },
+    {
+      "name": "partial",
+      "text": "WALLED_SENSITIV",
+      "found": false
+    },
+    {
+      "name": "OCR confusions rejected in exact mode",
+      "text": "WA11ED_5ENSITIVE",
+      "found": false
+    },
+    {
+      "name": "separate words",
+      "text": "walled garden, sensitive skin",
+      "found": false
+    },
+    {
+      "name": "ocr plain",
+      "text": "WALLED_SENSITIVE",
+      "ocr": true,
+      "found": true,
+      "matched": "WALLED_SENSITIVE"
+    },
+    {
+      "name": "ocr underscore read as space",
+      "text": "foo WALLED SENSITIVE bar",
+      "ocr": true,
+      "found": true,
+      "matched": "WALLED SENSITIVE"
+    },
+    {
+      "name": "ocr underscore dropped",
+      "text": "WALLEDSENSITIVE",
+      "ocr": true,
+      "found": true,
+      "matched": "WALLEDSENSITIVE"
+    },
+    {
+      "name": "ocr digit confusions",
+      "text": "WA11ED_5EN5ITIVE",
+      "ocr": true,
+      "found": true,
+      "matched": "WA11ED_5EN5ITIVE"
+    },
+    {
+      "name": "ocr pipes and bangs",
+      "text": "WA||ED_SENS!T!VE",
+      "ocr": true,
+      "found": true,
+      "matched": "WA||ED_SENS!T!VE"
+    },
+    {
+      "name": "ocr VV for W",
+      "text": "VVALLED_SENSITIVE",
+      "ocr": true,
+      "found": true,
+      "matched": "VVALLED_SENSITIVE"
+    },
+    {
+      "name": "ocr stray dots",
+      "text": "W.ALLED_SENSI.TIVE",
+      "ocr": true,
+      "found": true,
+      "matched": "W.ALLED_SENSI.TIVE"
+    },
+    {
+      "name": "ocr line break between words",
+      "text": "WALLED\nSENSITIVE",
+      "ocr": true,
+      "found": true,
+      "matched": "WALLED\nSENSITIVE"
+    },
+    {
+      "name": "ocr lowercase",
+      "text": "walled_sensitive",
+      "ocr": true,
+      "found": true,
+      "matched": "walled_sensitive"
+    },
+    {
+      "name": "ocr clean",
+      "text": "WALLED garden SENSITIVE",
+      "ocr": true,
+      "found": false
+    },
+    {
+      "name": "ocr clean 2",
+      "text": "invoice total 1,250.00",
+      "ocr": true,
+      "found": false
+    }
+  ],
+  "excerpts": [
+    {
+      "name": "short text, no ellipsis",
+      "text": "see WALLED_SENSITIVE now",
+      "excerpt": "see WALLED_SENSITIVE now"
+    },
+    {
+      "name": "long text both sides",
+      "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa WALLED_SENSITIVE bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "excerpt": "\u2026aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa WALLED_SENSITIVE bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\u2026"
+    },
+    {
+      "name": "newlines collapsed",
+      "text": "top\n\nWALLED_SENSITIVE\n\tend",
+      "excerpt": "top WALLED_SENSITIVE end"
+    }
+  ]
+}
