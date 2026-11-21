@@ -48,7 +48,7 @@ def inspect(data: bytes, ocr_max_pages: int = 15) -> Finding | None:
             return Finding.cannot_inspect(f"page {idx + 1} couldn't be rendered ({e})")
         m = marker.find(ocr_text, ocr=True)
         if m:
-            return Finding(where=f"page {idx + 1} (scanned text)", excerpt=m.excerpt())
+            return Finding(where=f"scanned page {idx + 1}", excerpt=m.excerpt())
     if skipped:
         return Finding.cannot_inspect(f"{skipped} scanned pages are beyond the OCR limit of {ocr_max_pages}")
     return None

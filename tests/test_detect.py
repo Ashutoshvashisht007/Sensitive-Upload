@@ -14,7 +14,7 @@ FLAGGED = {
     "marker_utf16.txt": "line 2",
     "marker_zero_width.txt": "line 1",
     "marker.pdf": "page 2",
-    "scanned_marker.pdf": "page 2 (scanned text)",
+    "scanned_marker.pdf": "scanned page 2",
     "marker.png": "text in the image",
     "marker_photo.jpg": "text in the image",
     "marker_meta.png": "image metadata",
