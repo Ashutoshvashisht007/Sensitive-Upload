@@ -38,19 +38,19 @@ SITES = {
         "url": "https://chatgpt.com/",
         "mock": "chatgpt.html",
         "label": "ChatGPT",
-        "composer": "#prompt-textarea",
+        "composer": '[data-composer-input] [contenteditable="true"]',
         "send": '[data-testid="send-button"]',
-        "response": '[data-message-author-role="assistant"] p',
-        "not_response": '[data-message-author-role="user"] div',
+        "response": '[data-markdown-text-style="assistant-message"] p',
+        "not_response": "[data-user-message-bubble] div",
         "color": "rgb(15, 118, 110)",  # light theme
     },
     "perplexity": {
         "url": "https://www.perplexity.ai/",
         "mock": "perplexity.html",
         "label": "Perplexity",
-        "composer": "#ask-input",
+        "composer": '[role="textbox"][contenteditable="true"]',
         "send": 'button[aria-label="Submit"]',
-        "response": "#markdown-content-0 li",
+        "response": ".prose li",
         "not_response": "h1",
         "color": "rgb(94, 234, 212)",  # dark theme
     },
@@ -213,7 +213,7 @@ DISPATCH_PASTE = """async ([files, selector]) => {
 def pick_files(page, name, paths):
     """Use each site's own attach flow: ChatGPT's hidden input, Perplexity's detached one."""
     if name == "chatgpt":
-        page.set_input_files('input[type="file"]', paths)
+        page.set_input_files('input[aria-label="Attach files"]', paths)
     else:
         with page.expect_file_chooser() as fc:
             page.click('button[aria-label="Attach"]')
@@ -405,7 +405,7 @@ def test_fail_closed_when_host_missing(pw, tmp_path):
         page.wait_for_timeout(1000)
         assert sent(page) == ["a clean prompt"]  # marker prompt blocked
 
-        page.set_input_files('input[type="file"]', [str(FIX / "clean.txt")])
+        page.set_input_files('input[aria-label="Attach files"]', [str(FIX / "clean.txt")])
         page.wait_for_timeout(1000)
         assert uploads(page) == []  # files can't be inspected → blocked
         assert h.sw.evaluate("state.connected") is False
