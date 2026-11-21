@@ -4,7 +4,8 @@
      Matches the live markup (Nov 2026): theme in <html data-theme>, a
      ProseMirror contenteditable (aria-label "Ask ChatGPT") inside
      [data-composer-input] with its own Enter handler, a send button in the
-     composer's trailing controls, four hidden file inputs in the composer
+     composer's trailing controls (type=submit, aria-label "Send": sending goes
+     through the form's submit event), four hidden file inputs in the composer
      form, assistant replies in [data-response-body] >
      [data-markdown-text-style="assistant-message"], user messages in
      [data-user-message-bubble]. Events are handled React-style: one delegated
@@ -59,7 +60,7 @@
           <div contenteditable="true" role="textbox" aria-label="Ask ChatGPT" translate="no" class="ProseMirror"><p></p></div>
         </div>
         <div data-composer-trailing-controls>
-          <button type="button" aria-label="Send prompt" data-testid="send-button" id="composer-submit-button">↑</button>
+          <button type="submit" aria-label="Send" class="cursor-interaction size-token-button-composer">↑</button>
         </div>
       </div>
     </form>
@@ -95,9 +96,10 @@
     editor.innerHTML = "<p></p>";
   }
 
-  // ProseMirror-style: the editor handles Enter itself.
+  // ProseMirror-style: the editor handles Enter itself and submits the form.
+  const form = document.getElementById("composer-form");
   editor.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); }
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); form.requestSubmit(); }
   });
   editor.addEventListener("paste", (e) => {
     if (e.clipboardData && e.clipboardData.files.length) { e.preventDefault(); upload([...e.clipboardData.files], "paste"); }
@@ -105,9 +107,9 @@
 
   // React-style: delegated listeners on the root container.
   root.addEventListener("click", (e) => {
-    if (e.target.closest('[data-testid="send-button"]')) send();
     if (e.target.closest('[aria-label="Add files and more"]')) attachFiles.click();
   });
+  root.addEventListener("submit", (e) => { e.preventDefault(); send(); });
   root.addEventListener("change", (e) => {
     if (e.target.type === "file") { upload([...e.target.files], "picker"); e.target.value = ""; }
   });

@@ -20,10 +20,13 @@
     '[data-user-message-bubble] [contenteditable="true"]',
     '[data-message-author-role="user"] textarea',
   ],
+  // Send: <button type="submit" aria-label="Send"> in the composer's form.
+  // Older builds used data-testid="send-button" / #composer-submit-button.
   sendButtons: [
+    'button[type="submit"][aria-label="Send"]',
+    '[data-composer-trailing-controls] button[aria-label*="Send" i]',
     '[data-testid="send-button"]',
     "#composer-submit-button",
-    '[data-composer-trailing-controls] button[aria-label*="Send" i]',
     'button[aria-label*="Send" i]',
   ],
   // Assistant replies only; the user's own messages are [data-user-message-bubble].

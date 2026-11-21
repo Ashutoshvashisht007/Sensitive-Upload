@@ -39,7 +39,7 @@ SITES = {
         "mock": "chatgpt.html",
         "label": "ChatGPT",
         "composer": '[data-composer-input] [contenteditable="true"]',
-        "send": '[data-testid="send-button"]',
+        "send": 'button[type="submit"][aria-label="Send"]',
         "response": '[data-markdown-text-style="assistant-message"] p',
         "not_response": "[data-user-message-bubble] div",
         "color": "rgb(15, 118, 110)",  # light theme
