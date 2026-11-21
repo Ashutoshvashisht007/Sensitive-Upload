@@ -170,13 +170,14 @@
 <tr><td>Upload</td><td>Multipart part with a filename, or PUT/POST bytes to an upload host</td><td>Detectors on a worker thread (OCR never stalls the proxy). File name from the part, the set-up request, or the URL. Dialog if flagged</td></tr>
 <tr><td>Send</td><td>The site's send endpoint, or any POST/PUT whose text contains the marker</td><td>Dialog with about 40 characters either side of the marker</td></tr>
 <tr><td>Background</td><td>A GET whose URL carries the marker (typeahead while typing)</td><td>Blocked with no dialog: the marker never leaves, and the user isn't interrupted mid-sentence</td></tr>
+<tr><td>Quiet</td><td>Telemetry and analytics; in the live test both sites copied the prompt into these</td><td>Blocked with no dialog, unless the user already chose Continue for that text</td></tr>
 <tr><td>Too large</td><td>Content-Length over 25 MB</td><td>Asked at the headers stage; if allowed, streamed without inspection</td></tr>
 <tr><td>Clean</td><td>Everything else</td><td>Forwarded untouched</td></tr>
 </table>
 <ul class="small">
   <li><b>Keys:</b> decisions are keyed on the content itself, the prompt text or the sha256 of the file. Parallel requests carrying the same content wait on one dialog.</li>
   <li><b>Memory:</b> Continue is remembered for 10 minutes, so retries aren't asked again. Cancel is remembered for 1.5 s, only to absorb those parallel duplicates.</li>
-  <li><b>Cancel's reply</b> carries CORS headers for the page, so the site's own error handling shows the message.</li>
+  <li><b>Cancel's reply</b> carries CORS headers for the page, so the site's own error handling can show it. ChatGPT does, with Retry; Perplexity shows nothing, so a macOS notification confirms the block. The message never contains the marker, because sites echo errors into telemetry.</li>
 </ul>
 </div>
 
@@ -258,7 +259,7 @@
     <li>recolouring under a nonce CSP;</li>
     <li>other sites going direct, and the AI sites failing closed when the app is down.</li>
   </ul></td></tr>
-<tr><td>Add-on</td><td>18</td><td>mitmproxy flows: dialog wording, file names from set-up replies and multipart parts, size limits, recolouring</td></tr>
+<tr><td>Add-on</td><td>24</td><td>mitmproxy flows: dialog wording, file names from set-up replies and multipart parts, size limits, telemetry copies, recolouring</td></tr>
 <tr><td>Units</td><td>37</td><td>Site rules, body parsing, CSP patching, PAC routing evaluated in Node, decision memory</td></tr>
 <tr><td>Installer</td><td>8</td><td>CA, PAC backup and restore, one admin prompt for all services, the login item. System tools are mocked</td></tr>
 <tr><td>Detectors + marker</td><td>33 + 30</td><td>Generated fixtures, including OCR, the tesseract fallback, encrypted and damaged PDFs</td></tr>

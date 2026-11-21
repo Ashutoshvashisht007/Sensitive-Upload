@@ -210,3 +210,41 @@ def test_recolor_can_be_turned_off_and_other_pages_untouched():
     run(guard2, g)
     guard2.response(g)
     assert "upload-guard" not in g.response.text
+
+
+# ---------------------------------------------------------------- telemetry copies of what you typed
+
+def telemetry(url, text):
+    return flow("POST", url, json.dumps({"events": [{"props": {"query": text}}]}).encode(), {"content-type": "text/plain"})
+
+
+@pytest.mark.parametrize("url", ["https://chatgpt.com/ces/v1/telemetry/intake",
+                                 "https://www.perplexity.ai/rest/event/analytics",
+                                 "https://ab.chatgpt.com/v1/rgstr"])
+def test_telemetry_copy_is_blocked_without_a_second_dialog(url):
+    guard, dialog = make_guard("cancel")
+    text = "summarise the WALLED_SENSITIVE notes"
+    send, tele = flow("POST", CONV, prompt_body(text)), telemetry(url, text)
+    run(guard, send, tele)
+    assert blocked(send) and blocked(tele)
+    assert len(dialog.shown) == 1
+
+
+def test_telemetry_copy_passes_after_continue():
+    guard, dialog = make_guard("continue")
+    text = "summarise the WALLED_SENSITIVE notes"
+    send, tele = flow("POST", CONV, prompt_body(text)), telemetry("https://chatgpt.com/ces/v1/telemetry/intake", text)
+    run(guard, send, tele)
+    assert send.response is None and tele.response is None and len(dialog.shown) == 1
+
+
+def test_telemetry_with_marker_but_no_decision_is_blocked_quietly():
+    guard, dialog = make_guard("continue")
+    tele = telemetry("https://www.perplexity.ai/rest/event/analytics", "draft WALLED_SENSITIVE")
+    run(guard, tele)
+    assert blocked(tele) and dialog.shown == []
+
+
+def test_block_message_never_contains_the_marker():
+    # sites copy error messages into their telemetry; the marker in it would trigger another dialog
+    assert "WALLED" not in BLOCK_MESSAGE.upper()

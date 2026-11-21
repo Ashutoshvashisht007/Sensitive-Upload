@@ -5,6 +5,9 @@ upload_hosts   where the browser sends file bytes (storage buckets); routed too
 send_paths     requests that carry a prompt the user sent → dialog when the marker is in them
 setup_paths    requests that announce an upload; their JSON names the file, and the
                reply holds the URL the bytes will go to (so the dialog can name the file)
+quiet          telemetry / analytics (hosts or paths). Both sites copy what you type into
+               these; carrying the marker they're blocked without a dialog, unless you
+               already chose Continue for that text
 responses      CSS selectors of AI answers, for recolouring
 
 Endpoints change; anything not listed is still checked (see proxy/addon.py).
@@ -27,12 +30,19 @@ class Site:
     send_paths: tuple[str, ...]
     setup_paths: tuple[str, ...]
     responses: tuple[str, ...]
+    quiet_hosts: tuple[str, ...] = ()
+    quiet_paths: tuple[str, ...] = ()
 
     def is_send(self, path: str) -> bool:
         return any(re.search(p, path) for p in self.send_paths)
 
     def is_setup(self, path: str) -> bool:
         return any(re.search(p, path) for p in self.setup_paths)
+
+    def is_quiet(self, host: str, path: str) -> bool:
+        return (host_matches(host, self.quiet_hosts)
+                or any(re.search(p, path) for p in self.quiet_paths)
+                or bool(_TELEMETRY.search(path)))
 
     def all_host_patterns(self) -> tuple[str, ...]:
         return self.hosts + self.upload_hosts
@@ -51,6 +61,8 @@ CHATGPT = Site(
         "[data-response-body]",
         '[data-message-author-role="assistant"]',
     ),
+    quiet_hosts=("ab.chatgpt.com",),
+    quiet_paths=(r"^/ces/",),
 )
 
 PERPLEXITY = Site(
@@ -61,7 +73,12 @@ PERPLEXITY = Site(
     send_paths=(r"^/rest/sse/perplexity_ask", r"^/rest/.*/ask"),
     setup_paths=(r"^/rest/uploads/",),
     responses=(".prose", '[id^="markdown-content-"]'),
+    quiet_hosts=("count.perplexity.ai",),
+    quiet_paths=(r"^/rest/event/", r"^/cdn-cgi/rum"),
 )
+
+# Generic telemetry-looking paths, for endpoints the lists above don't know yet.
+_TELEMETRY = re.compile(r"(telemetry|analytics|/rum\b|/metrics|sdk_exception|/track|/collect|/rgstr|/intake)", re.I)
 
 SITES = (CHATGPT, PERPLEXITY)
 _BY_KEY = {s.key: s for s in SITES}

@@ -33,12 +33,14 @@ from ..config import Config, LiveConfig, ensure_home, home_dir
 from ..decisions import Decider, content_key
 from ..detect import inspect_file, marker
 from ..dialog import FlaggedFile, files_text, prompt_text
+from ..dialog.notify import notify_blocked
 from ..sites import Site, by_key, host_matches, routed_host_patterns, site_for_host, site_for_origin
 from . import bodies, recolor
 
 log = logging.getLogger("upload_guard.proxy")
 
-BLOCK_MESSAGE = "Blocked by Sensitive Upload Guard: this contains WALLED_SENSITIVE."
+# Never put the marker itself in here: sites echo errors into their telemetry.
+BLOCK_MESSAGE = "Blocked by Sensitive Upload Guard. Nothing was sent."
 WRITE_METHODS = ("POST", "PUT", "PATCH")
 NAME_KEYS = ("file_name", "filename", "fileName", "name")
 NAME_TTL = 3600.0
@@ -104,19 +106,27 @@ class GuardAddon:
             self._log(flow, site, "send" if site.is_send(path) else "other", marker_found=False)
             return
         text, m = hit
+        key = content_key("prompt", text)
+        if site.is_quiet(req.pretty_host, path) and not site.is_send(path):
+            # telemetry/analytics copying what you typed: let it through only if you already said Continue
+            self._log(flow, site, "quiet", marker_found=True)
+            if self.decider.remembered(key) is not True:
+                self._block(flow)
+            return
         if site.is_send(path) or req.method in WRITE_METHODS:
             self._log(flow, site, "send", marker_found=True)
-            allowed, asked = await self.decider.decide(
-                content_key("prompt", text), lambda: prompt_text(site.key, m.excerpt()))
+            allowed, asked = await self.decider.decide(key, lambda: prompt_text(site.key, m.excerpt()))
             if asked:
                 audit.record(site.key, "prompt", f"prompt ({len(text)} chars)", "prompt", _word(allowed), "marker")
+                if not allowed:
+                    notify_blocked(site.label, "prompt")
             if not allowed:
                 self._block(flow)
         else:
             # e.g. type-ahead suggestions sent while typing: never let the marker out, don't nag
             self._log(flow, site, "background", marker_found=True)
-            audit.record(site.key, "prompt", "background request", "url or body", "cancel", "marker in a background request")
-            self._block(flow)
+            if self.decider.remembered(key) is not True:
+                self._block(flow)
 
     async def websocket_message(self, flow: http.HTTPFlow) -> None:
         site = by_key(flow.metadata.get("ug_site", ""))
@@ -186,6 +196,8 @@ class GuardAddon:
             for f in flagged:
                 reason = f"uninspectable: {f.reason}" if f.uninspectable else "marker"
                 audit.record(site.key, "file", f.name, f.where, _word(allowed), reason)
+            if not allowed:
+                notify_blocked(site.label, "file")
         if not allowed:
             self._block(flow)
 
