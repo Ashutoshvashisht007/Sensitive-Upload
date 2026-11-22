@@ -111,11 +111,11 @@ class Handler(BaseHTTPRequestHandler):
         host, path = self._host(), self.path
         if path.startswith("/backend-api/f/conversation") or path.startswith("/rest/sse/perplexity_ask"):
             self._send(200, b'data: {"ok": true}\n\n', "text/event-stream")
-        elif path == "/backend-api/files/upload_reservations":
+        elif path == "/backend-api/files":
             n = self.server.next_id()
             self._send(200, json.dumps({"file_id": f"file_{n:04d}",
                                         "upload_url": f"https://{STORAGE}/files/{n:04d}/raw?se=2026&sig=abc"}).encode())
-        elif path.startswith("/backend-api/files/upload_reservations/") and path.endswith("/claim_and_finish"):
+        elif path == "/backend-api/files/process_upload_stream":
             self._send(200, b'{"status": "success"}')
         elif path.startswith("/rest/uploads/create_upload_url"):
             n = self.server.next_id()

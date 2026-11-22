@@ -41,6 +41,12 @@ class FlaggedFile:
     where: str = ""
     uninspectable: bool = False
     reason: str = ""
+    named: bool = True  # False: `name` is a description such as "a 224-byte text file"
+
+    def label(self, start: bool = False) -> str:
+        if self.named:
+            return f"“{self.name}”"
+        return self.name[:1].upper() + self.name[1:] if start else self.name
 
 
 def files_text(site: str, flagged: list[FlaggedFile], clean_count: int) -> DialogText:
@@ -51,10 +57,10 @@ def files_text(site: str, flagged: list[FlaggedFile], clean_count: int) -> Dialo
     if len(flagged) == 1:
         f = flagged[0]
         if f.uninspectable:
-            lead = (f"“{f.name}” couldn't be inspected ({f.reason}) and is about to be "
+            lead = (f"{f.label(start=True)} couldn't be inspected ({f.reason}) and is about to be "
                     f"uploaded to {site_label}.")
         else:
-            lead = (f"“{f.name}” ({f.where}) contains {MARKER} and is about to be "
+            lead = (f"{f.label(start=True)} ({f.where}) contains {MARKER} and is about to be "
                     f"uploaded to {site_label}.")
         lines = [lead]
         cont = "Continue uploads it unchanged."
@@ -63,9 +69,9 @@ def files_text(site: str, flagged: list[FlaggedFile], clean_count: int) -> Dialo
         lines = [f"These files are about to be uploaded to {site_label}:"]
         for f in flagged:
             if f.uninspectable:
-                lines.append(f"• “{f.name}” couldn't be inspected ({f.reason})")
+                lines.append(f"• {f.label(start=True)} couldn't be inspected ({f.reason})")
             else:
-                lines.append(f"• “{f.name}” ({f.where}) contains {MARKER}")
+                lines.append(f"• {f.label(start=True)} ({f.where}) contains {MARKER}")
         cont = "Continue uploads them unchanged."
         cancel = "Cancel stops this upload."
 

@@ -18,7 +18,7 @@ There's **no browser extension**. The app sits in the menu bar, and you keep usi
   - images, read by OCR, plus their metadata;
   - Office documents and zip files.
 
-  If the marker is there, the dialog names the file and says where the marker was found.
+  If the marker is there, the dialog names the file and says where the marker was found. ChatGPT's newer upload flow sends a file's name only after its bytes, so the app finds the name by matching the bytes to the file on your Mac (Spotlight, then a hash). Only the name is used, and nothing leaves the Mac.
 - **Continue** forwards the request exactly as the browser sent it. **Cancel** answers it on the Mac, so nothing reaches the site. ChatGPT shows "Blocked by Sensitive Upload Guard. Nothing was sent." with a Retry button; Perplexity shows its own "Something went wrong while generating this response." Either way you can edit and try again.
 - **Analytics.** Both sites copy what you type into their analytics and telemetry. Those requests are blocked silently when they carry the marker, unless you chose Continue for that text.
 - **AI responses are recoloured** on both sites, in light and dark themes.
@@ -114,13 +114,14 @@ For a prompt, send anything containing `WALLED_SENSITIVE`.
 ## Tests
 
 ```sh
-uv run pytest      # 160 tests
+uv run pytest      # 169 tests
 ```
 
 | Suite | Tests | What it covers |
 |---|---|---|
 | End to end (`tests/e2e`) | 21 | Chromium uses only the app's PAC and goes through the real guard to a local stand-in for both sites (`tests/mock_sites`), which records what arrives. Covers clean prompts and files, Cancel and Continue for prompts and for txt / PDF / scanned PDF / PNG, typeahead never leaking the marker, oversized files, recolouring under a nonce CSP, other sites going direct, and the AI sites failing closed when the app is down |
-| Add-on | 29 | The guard on mitmproxy flows: dialog wording, upload file names (including ChatGPT's live `upload_reservations` flow), automatic upload retries, multipart uploads, size limits, telemetry copies of a prompt, recolouring and cache revalidation |
+| Add-on | 34 | The guard on mitmproxy flows: dialog wording, upload file names (including ChatGPT's live `upload_reservations` flow, which names the file after the bytes), automatic upload retries, multipart uploads, size limits, telemetry copies of a prompt, recolouring, cache revalidation and pages fetched by a service worker |
+| File naming | 4 | Matching an unnamed upload to the file on disk, with Spotlight's results replaced by a fixed list |
 | Units | 37 | Site rules, body parsing, CSP patching, PAC routing (evaluated in Node), the decision memory |
 | Installer | 8 | The CA, PAC backup and restore, a single admin prompt, the login item. System tools are mocked |
 | Detectors | 33 | Every detector on generated fixtures, including OCR and the tesseract fallback |
@@ -139,6 +140,7 @@ uv run python scripts/check_dialog_closes.py       # dialog really closes after 
 ## Troubleshooting
 
 - **Something isn't working.** Run `uv run upload-guard status`; every line should say `yes`.
+- **Perplexity answers aren't teal right after installing.** Reload twice. Perplexity's service worker shows its own cached copy of the page first, and the app colours the fresh copy that replaces it.
 - **ChatGPT or Perplexity won't load.** The app isn't running. Click the shield or run `uv run upload-guard run`. If you just installed, quit and reopen Chrome.
 - **A certificate warning on the AI sites.** The local CA isn't trusted. Run `install` again; it asks for your password.
 - **A site changed and something isn't caught.** Turn on `upload-guard log-requests on`, use the site, and read `~/.upload-guard/requests.log` (method, host, path, size). Endpoints and hosts are in `src/upload_guard/sites.py`. Anything not listed is still checked:
@@ -168,6 +170,7 @@ src/upload_guard/
   proxy/bodies.py     JSON, form, multipart and query parsing
   proxy/recolor.py    response-colour CSS and CSP-safe injection
   sites.py            per-site hosts, endpoints and answer selectors
+  locate.py           names an upload from the file on disk when the site hasn't said yet
   decisions.py        one dialog per piece of content, on the right thread
   detect/             marker rules, file type sniffing, text / PDF / image / zip detectors, OCR
   dialog/             NSAlert (works over full-screen apps), osascript fallback, test backends

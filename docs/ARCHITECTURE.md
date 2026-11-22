@@ -86,7 +86,7 @@ mitmproxy hands every request on a routed host to the add-on **before** anything
 
 **How a request is classified:**
 
-1. **Upload.** Multipart parts with a filename, or a PUT/POST of raw bytes to an upload host. Each file goes through the detectors on a worker thread, so OCR never stalls the proxy. The file name comes from the multipart part, from the earlier set-up request (ChatGPT announces `file_name` and gets back an `upload_url`), or from the URL.
+1. **Upload.** Multipart parts with a filename, or a PUT/POST of raw bytes to an upload host. Each file goes through the detectors on a worker thread, so OCR never stalls the proxy. The file name comes from the multipart part, from an earlier request that announced the file (`file_name` and size, with an `upload_url` in the reply), or from the URL. ChatGPT's newer flow reserves a storage URL first and names the file only after the bytes are uploaded. For a flagged upload with no name, the app asks Spotlight for files of exactly that size in the home folder and compares SHA-256 hashes (`locate.py`). Only the matching file's name is used. If nothing matches, the dialog describes the file instead, for example "a text file of 224 bytes".
 2. **Send.** The path matches the site's send rules, or it's any POST/PUT/PATCH whose text (JSON values, form fields, plain text) contains the marker. Result: a prompt dialog with an excerpt.
 3. **Background.** A GET whose URL carries the marker, such as typeahead suggestions sent while the user types. It's blocked without a dialog: the marker never leaves, and the user isn't interrupted mid-sentence.
 4. **Quiet.** Telemetry and analytics: `/ces/…` and `ab.chatgpt.com` on ChatGPT, `/rest/event/analytics` and `count.perplexity.ai` on Perplexity, plus generic telemetry-looking paths. In the live test both sites copied the typed prompt into these. Carrying the marker, they're blocked without a dialog, unless the user already chose Continue for that exact text.
@@ -105,7 +105,7 @@ mitmproxy hands every request on a routed host to the add-on **before** anything
 
 ## 5. Recolouring answers
 
-When a routed site returns an HTML page (`GET`, `200`, `text/html`, `Sec-Fetch-Dest: document`), the add-on inserts one `<style>` before `</head>`. Its selectors come from `sites.py`:
+When a routed site returns an HTML page (`GET`, `200`, `text/html`, for the tab or for a service worker fetching it), the add-on inserts one `<style>` before `</head>`. Its selectors come from `sites.py`:
 
 - **ChatGPT:** `[data-markdown-text-style="assistant-message"]`, `[data-response-body]`.
 - **Perplexity:** `.prose`.
@@ -113,6 +113,8 @@ When a routed site returns an HTML page (`GET`, `200`, `text/html`, `Sec-Fetch-D
 The colours are teal: `#0f766e` in light themes and `#5eead4` in dark, following `<html data-theme>` (ChatGPT), `data-color-scheme` (Perplexity) or the system setting. Because the rule matches the answer containers, text that streams in later is coloured too.
 
 **Caching.** Page requests to the two sites have their `If-None-Match`/`If-Modified-Since` headers removed, and coloured pages lose their `ETag`/`Last-Modified`. Otherwise a cached copy from before the app was installed could come back as `304 Not Modified` and be shown without the style. The live test showed this on Perplexity, whose pages are cacheable.
+
+**Service workers.** Perplexity's service worker keeps its own copy of the page and shows it first on a reload (stale-while-revalidate), while it fetches a fresh copy in the background. That background fetch has no `document` destination, so pages are recognised by `Accept: text/html` as well. The coloured copy then replaces the cached one. If Perplexity was open before the app was installed, the first reload can still show the old copy, and the second is coloured.
 
 **CSP.** If the page's Content-Security-Policy would block an inline `<style>`, the style gets a fresh nonce, and only a `style-src-elem` directive is added or extended. Nothing else in the policy changes. A policy that already allows inline styles with `'unsafe-inline'` is left alone, because adding a nonce there would switch `'unsafe-inline'` off for the site's own styles.
 
@@ -189,18 +191,20 @@ Getting it over **full-screen Chrome** took four fixes:
 - **Local only.** Everything is inspected on the Mac, and Vision OCR is on-device. Allowed content goes only to the site the user chose.
 - **Narrow decryption.** Only the AI hosts are decrypted. The CA key is generated locally and stored with owner-only permissions. `uninstall` removes the trust.
 - **No content in logs.** The audit log and the optional request log hold metadata only: time, site, file name or prompt length, where, decision, and for requests method, host, path and size.
+- **File lookup stays local.** To name an unnamed flagged upload, the app reads only files of exactly the uploaded size, hashes them on the Mac and keeps just the matching name. It skips app data and dependency folders.
 - **Not a hard boundary.** It's a guardrail against mistakes. A determined user can uninstall it or change the proxy settings. A managed deployment would push the PAC and the CA with a configuration profile and lock them.
 
 ## 11. How it's tested
 
-160 tests, all run by `uv run pytest`:
+169 tests, all run by `uv run pytest`:
 
 - **End to end (21).** Chromium starts with only the app's PAC data URL. It goes through the real guard to a local stand-in for both sites, which records what arrives, so "blocked before it was sent" is checked directly. The mock pages copy each site's markup and network calls:
-  - ChatGPT: `POST /backend-api/files`, then `PUT` to `files.oaiusercontent.com`;
+  - ChatGPT: `POST /backend-api/files`, then `PUT` to `sdmntpr….oaiusercontent.com/files/<id>/raw`;
   - Perplexity: `create_upload_url`, then a multipart `POST` to the S3 bucket; typeahead `GET`s.
 
   The ChatGPT mock also sends a nonce-based CSP.
-- **Add-on (29)** on mitmproxy flows, including telemetry copies of a prompt, ChatGPT's live upload flow and automatic retries.
+- **Add-on (34)** on mitmproxy flows, including telemetry copies of a prompt, ChatGPT's live upload flows (named before or after the bytes), automatic retries and pages fetched by a service worker.
+- **File naming (4):** matching an upload to the file on disk, with Spotlight's results replaced by a fixed list.
 - **Units (37):** sites, bodies, CSP, PAC routing evaluated in Node, the Decider.
 - **Installer (8),** with `networksetup`, `security` and `launchctl` mocked.
 - **Detectors (33)** and **marker rules (30)** on generated fixtures.

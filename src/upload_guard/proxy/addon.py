@@ -22,16 +22,18 @@ import asyncio
 import json
 import logging
 import os
+import re
 import time
 from pathlib import Path
+from urllib import parse as urllib_parse
 from urllib.parse import urlsplit
 
 from mitmproxy import http
 
-from .. import audit
+from .. import audit, locate
 from ..config import Config, LiveConfig, ensure_home, home_dir
 from ..decisions import FILE_CANCEL_TTL, Decider, content_key
-from ..detect import inspect_file, marker
+from ..detect import filetype, inspect_file, marker
 from ..dialog import FlaggedFile, files_text, prompt_text
 from ..sites import Site, by_key, host_matches, routed_host_patterns, site_for_host, site_for_origin
 from . import bodies, recolor
@@ -44,6 +46,8 @@ WRITE_METHODS = ("POST", "PUT", "PATCH")
 NAME_KEYS = ("file_name", "filename", "fileName", "name")
 SIZE_KEYS = ("file_size", "fileSize", "size", "content_length", "contentLength", "byte_size")
 NAME_TTL = 3600.0
+_FILE_NAME = re.compile(r"^[^/\\\n]{1,255}\.[A-Za-z0-9]{1,10}$")
+_DISPOSITION_NAME = re.compile(r"filename\*?=(?:UTF-8'')?\"?([^\";]+)", re.I)
 
 
 class GuardAddon:
@@ -68,8 +72,10 @@ class GuardAddon:
         req = flow.request
         length = _int(req.headers.get("content-length"))
         if req.method in WRITE_METHODS and length > self.config.max_inspect_bytes:
-            name = self._name_for(flow) or "A file"
-            flagged = [FlaggedFile(name, uninspectable=True, reason=f"it's larger than {self.config.max_inspect_mb} MB")]
+            name = self._name_for(flow)
+            flagged = [FlaggedFile(name or "a file", uninspectable=True, named=bool(name),
+                                   reason=f"it's larger than {self.config.max_inspect_mb} MB")]
+            name = name or "unnamed file"
             allowed, asked = await self.decider.decide(
                 content_key("large", f"{req.pretty_url}:{length}"), lambda: files_text(site.key, flagged, 0))
             if asked:
@@ -97,13 +103,15 @@ class GuardAddon:
                 req.headers.pop(h, None)
             # (no return: a page URL can carry a question, e.g. /search?q=..., and is still checked)
 
-        if req.method in WRITE_METHODS and ("json" in ctype or site.is_setup(path)):
-            # An upload is announced with a JSON body naming the file (path varies by site and
-            # over time); its reply carries the storage URL. Remember the name for that URL.
+        if req.method in WRITE_METHODS and ("json" in ctype or site.is_setup(path) or body[:1] in (b"{", b"[")):
+            # An upload is usually announced with a JSON body naming the file (path varies by
+            # site and over time); its reply carries the storage URL. Remember the name for that
+            # URL, and by announced size (telemetry often carries both, whatever its content type).
             data = bodies.parse_json(body)
             name = bodies.find_key(data, NAME_KEYS) if data is not None else None
-            if name and (site.is_setup(path) or "." in name):
-                flow.metadata["ug_setup_name"] = name
+            if name and (site.is_setup(path) or _FILE_NAME.match(name)):
+                if site.is_setup(path) or "json" in ctype:
+                    flow.metadata["ug_setup_name"] = name
                 size = bodies.find_value(data, SIZE_KEYS)
                 if isinstance(size, (int, float)) or (isinstance(size, str) and size.isdigit()):
                     self._by_size[(site.key, int(size))] = (name, time.monotonic())
@@ -178,9 +186,11 @@ class GuardAddon:
                                 "status": flow.response.status_code, "styled": True})
             except Exception:  # noqa: BLE001 - never break the page over colours
                 log.exception("recolouring failed")
-        elif self._is_page_request(flow, site):
+        elif self._is_page_request(flow, site) or "text/html" in flow.response.headers.get("content-type", ""):
             self._log_line({"site": site.key, "kind": "page", "path": urlsplit(flow.request.path).path,
-                            "status": flow.response.status_code, "styled": False})
+                            "status": flow.response.status_code, "styled": False,
+                            "dest": flow.request.headers.get("sec-fetch-dest", ""),
+                            "type": flow.response.headers.get("content-type", "").split(";")[0]})
 
     # ------------------------------------------------------------------ files
 
@@ -189,29 +199,40 @@ class GuardAddon:
         if req.method not in WRITE_METHODS or not body:
             return []
         parts = bodies.multipart_parts(ctype, body)
-        files = [(p.filename or "file", p.content_type, p.data) for p in parts if p.filename is not None]
+        files = [(p.filename or None, p.content_type, p.data) for p in parts if p.filename is not None]
         if files:
             key_field = next((p.data.decode("utf-8", "replace") for p in parts if p.name == "key" and not p.filename), "")
-            if key_field and all(name == "file" for name, _m, _d in files):
-                files = [(os.path.basename(key_field), m, d) for _n, m, d in files]
+            if key_field and all(name in ("file", None) for name, _m, _d in files):
+                files = [(os.path.basename(key_field) or None, m, d) for _n, m, d in files]
             return files
         if host_matches(req.pretty_host, site.upload_hosts):
-            name = self._name_for(flow) or self._name_by_size(site, len(body)) or _guess_name(req.path)
+            name = (self._name_for(flow) or self._name_by_size(site, len(body))
+                    or _name_in_request(req) or _guess_name(req.path))
             return [(name, ctype, body)]
         return []
 
     async def _check_files(self, flow, site: Site, files) -> None:
         findings = []
         for name, mime, data in files:
-            finding = await asyncio.to_thread(inspect_file, name, mime, data, self.config)
-            findings.append((name, data, finding))
-        flagged = [FlaggedFile(n, f.where, f.uninspectable, f.reason) for n, _d, f in findings if f is not None]
+            finding = await asyncio.to_thread(inspect_file, name or "", mime, data, self.config)
+            findings.append((name, mime, data, finding))
+        flagged = []
+        for name, mime, data, f in findings:
+            if f is None:
+                continue
+            if name is None:
+                # the site hasn't said what the file is called (yet): find it on this Mac by its bytes
+                name = await asyncio.to_thread(locate.name_for_bytes, data)
+            if name:
+                flagged.append(FlaggedFile(name, f.where, f.uninspectable, f.reason))
+            else:
+                flagged.append(FlaggedFile(_describe(data, mime), f.where, f.uninspectable, f.reason, named=False))
         self._log(flow, site, "upload", marker_found=bool(flagged))
         if not flagged:
             return
         if not self.config.fail_mode == "closed" and all(f.uninspectable for f in flagged):
             return
-        key = content_key("file", b"".join(content_key("f", d).encode() for _n, d, _f in findings))
+        key = content_key("file", b"".join(content_key("f", d).encode() for _n, _m, d, _f in findings))
         clean = len(files) - len(flagged)
         allowed, asked = await self.decider.decide(key, lambda: files_text(site.key, flagged, clean),
                                                    cancel_ttl=FILE_CANCEL_TTL)
@@ -267,9 +288,14 @@ class GuardAddon:
 
     @staticmethod
     def _is_page_request(flow, site: Site) -> bool:
+        """A request for one of the site's HTML pages. Besides plain navigations this covers a
+        service worker fetching the page for the tab (no `document` destination, but still
+        asks for text/html)."""
         req = flow.request
+        dest = req.headers.get("sec-fetch-dest", "")
         return (req.method == "GET"
-                and req.headers.get("sec-fetch-dest", "") in ("document", "iframe")
+                and (dest in ("document", "iframe")
+                     or (dest in ("", "empty") and "text/html" in req.headers.get("accept", "")))
                 and host_matches(req.pretty_host, site.hosts))
 
     @staticmethod
@@ -279,7 +305,7 @@ class GuardAddon:
             req.method == "GET"
             and resp.status_code == 200
             and "text/html" in resp.headers.get("content-type", "")
-            and req.headers.get("sec-fetch-dest", "document") in ("document", "iframe")
+            and req.headers.get("sec-fetch-dest", "document") in ("document", "iframe", "empty")
             and host_matches(req.pretty_host, site.hosts)
         )
 
@@ -302,11 +328,18 @@ class GuardAddon:
         if not self.config.log_requests:
             return
         req = flow.request
-        self._log_line({
+        entry = {
             "site": site.key, "kind": kind, "method": req.method, "host": req.pretty_host,
             "path": urlsplit(req.path).path, "type": req.headers.get("content-type", "").split(";")[0],
             "size": len(req.raw_content or b""), "marker": marker_found,
-        })
+        }
+        if req.method == "GET":
+            entry["dest"] = req.headers.get("sec-fetch-dest", "")
+            entry["accepts_html"] = "text/html" in req.headers.get("accept", "")
+        if kind.startswith("upload"):  # names only, never values
+            entry["header_names"] = sorted({k.lower() for k in req.headers.keys()} - {"cookie", "authorization"})
+            entry["query_names"] = sorted({k for k, _v in urllib_parse.parse_qsl(urlsplit(req.path).query)})
+        self._log_line(entry)
 
     def _log_line(self, entry: dict) -> None:
         if not self.config.log_requests:
@@ -319,9 +352,33 @@ class GuardAddon:
             f.write(json.dumps(entry) + "\n")
 
 
-def _guess_name(path: str) -> str:
+def _guess_name(path: str) -> str | None:
     last = os.path.basename(urlsplit(path).path)
-    return last if "." in last else "a file"
+    return last if _FILE_NAME.match(last) else None
+
+
+def _name_in_request(req) -> str | None:
+    """A file name in a Content-Disposition-style header or query value (some storage APIs take one)."""
+    values = [v for k, v in req.headers.items() if "disposition" in k.lower() or "filename" in k.lower()]
+    values += [v for k, v in urllib_parse.parse_qsl(urlsplit(req.path).query) if k.lower() in ("rscd", "filename", "name")]
+    for v in values:
+        m = _DISPOSITION_NAME.search(v)
+        name = os.path.basename(urllib_parse.unquote(m.group(1) if m else v).strip())
+        if _FILE_NAME.match(name):
+            return name
+    return None
+
+
+_KIND_WORDS = {filetype.TEXT: "a text file", filetype.PDF: "a PDF", filetype.IMAGE: "an image",
+               filetype.ZIP: "a zip or Office file", filetype.BINARY: "a file"}
+
+
+def _describe(data: bytes, mime: str) -> str:
+    """'a text file of 224 bytes', for an upload whose name we couldn't find."""
+    kind = _KIND_WORDS.get(filetype.sniff(data, "", mime), "a file")
+    n = len(data)
+    size = f"{n} bytes" if n < 1024 else f"{n / 1024:.0f} KB" if n < 1024 * 1024 else f"{n / 1048576:.1f} MB"
+    return f"{kind} of {size}"
 
 
 def _int(v) -> int:

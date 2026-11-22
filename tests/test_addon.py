@@ -252,12 +252,11 @@ def test_block_message_never_contains_the_marker():
 
 # ---------------------------------------------------------------- live-test regressions
 
-def test_chatgpt_upload_reservation_names_the_file():
-    """The live ChatGPT flow: POST /backend-api/files/upload_reservations, then PUT .../files/<id>/raw."""
-    guard, dialog = make_guard("cancel")
-    data = (FIX / "marker.txt").read_bytes()
+def reservation_flow(guard, data):
+    """The live ChatGPT flow (Nov 2026): reserve a storage URL without saying which file, PUT the
+    bytes there, and only then name the file (claim_and_finish)."""
     setup = flow("POST", "https://chatgpt.com/backend-api/files/upload_reservations",
-                 json.dumps({"file_name": "notes.txt", "file_size": len(data), "use_case": "my_files"}).encode())
+                 json.dumps({"intended_use_case": "my_files", "entry_surface": "composer", "store_in_library": True}).encode())
     run(guard, setup)
     setup.response = http.Response.make(200, json.dumps({
         "file_id": "file_0001", "upload_url": "https://sdmntprnortheu.oaiusercontent.com/files/0001/raw?se=1&sig=x"}).encode(),
@@ -266,8 +265,43 @@ def test_chatgpt_upload_reservation_names_the_file():
     put = flow("PUT", "https://sdmntprnortheu.oaiusercontent.com/files/0001/raw?se=1&sig=x", data,
                {"content-type": "text/plain", "origin": "https://chatgpt.com"})
     run(guard, put)
+    return put
+
+
+def test_reserved_upload_is_named_from_the_file_on_disk(tmp_path, monkeypatch):
+    data = (FIX / "marker.txt").read_bytes()
+    (tmp_path / "Desktop").mkdir()
+    (tmp_path / "Desktop" / "notes.txt").write_bytes(data)
+    (tmp_path / "other.txt").write_bytes(b"x" * len(data))  # same size, different bytes
+    monkeypatch.setattr("upload_guard.locate._spotlight",
+                        lambda size, home, timeout: [str(tmp_path / "other.txt"), str(tmp_path / "Desktop" / "notes.txt")])
+    monkeypatch.setattr("upload_guard.locate.Path.home", lambda: tmp_path)
+    monkeypatch.setattr("upload_guard.locate.sys.platform", "darwin")
+    guard, dialog = make_guard("cancel")
+    put = reservation_flow(guard, data)
     assert blocked(put)
     assert dialog.shown[0].body.startswith("“notes.txt” (line 2) contains WALLED_SENSITIVE")
+    assert audit.tail(1)[0]["name"] == "notes.txt"
+
+
+def test_reserved_upload_not_found_on_disk_is_described():
+    guard, dialog = make_guard("cancel")
+    data = (FIX / "marker.txt").read_bytes()
+    put = reservation_flow(guard, data)
+    assert blocked(put)
+    assert dialog.shown[0].body.startswith(
+        f"A text file of {len(data)} bytes (line 2) contains WALLED_SENSITIVE and is about to be uploaded to ChatGPT.")
+
+
+def test_telemetry_announcing_name_and_size_names_the_upload():
+    guard, dialog = make_guard("cancel")
+    data = (FIX / "marker.txt").read_bytes()
+    tele = flow("POST", "https://chatgpt.com/ces/v1/telemetry/intake",
+                json.dumps({"events": [{"props": {"fileName": "notes.txt", "fileSize": len(data)}}]}).encode(),
+                {"content-type": "text/plain"})
+    run(guard, tele)
+    reservation_flow(guard, data)
+    assert dialog.shown[0].body.startswith("“notes.txt” (line 2)")
 
 
 def test_any_json_naming_a_file_teaches_the_name():
@@ -300,6 +334,26 @@ def test_page_requests_always_fetch_a_full_page():
     f.response = http.Response.make(200, b"<html><head></head></html>", {"content-type": "text/html", "etag": '"e2"'})
     guard.response(f)
     assert "upload-guard-response-color" in f.response.text and "etag" not in f.response.headers
+
+
+def test_page_fetched_by_a_service_worker_is_styled():
+    """Perplexity's service worker fetches the page for the tab: no `document` destination."""
+    guard, _ = make_guard()
+    f = flow("GET", "https://www.perplexity.ai/search/abc", b"",
+             {"sec-fetch-dest": "empty", "accept": "text/html,application/xhtml+xml", "if-none-match": '"e1"'})
+    run(guard, f)
+    assert "if-none-match" not in f.request.headers
+    f.response = http.Response.make(200, b"<html><head></head></html>", {"content-type": "text/html"})
+    guard.response(f)
+    assert "upload-guard-response-color" in f.response.text
+
+
+def test_api_calls_keep_their_cache_validators():
+    guard, _ = make_guard()
+    f = flow("GET", "https://www.perplexity.ai/rest/user/settings", b"",
+             {"sec-fetch-dest": "empty", "accept": "*/*", "if-none-match": '"e1"'})
+    run(guard, f)
+    assert f.request.headers["if-none-match"] == '"e1"'
 
 
 def test_question_typed_into_the_address_bar_asks():

@@ -167,7 +167,7 @@
 </figure>
 <table>
 <tr><th style="width:20%">Kind</th><th style="width:42%">Recognised by</th><th>Then</th></tr>
-<tr><td>Upload</td><td>Multipart part with a filename, or PUT/POST bytes to an upload host</td><td>Detectors on a worker thread (OCR never stalls the proxy). File name from the part, the set-up request, or the URL. Dialog if flagged</td></tr>
+<tr><td>Upload</td><td>Multipart part with a filename, or PUT/POST bytes to an upload host</td><td>Detectors on a worker thread (OCR never stalls the proxy). File name from the part, the request that announced it, or the URL; if ChatGPT names the file only after the bytes, from the matching file on disk (Spotlight, then SHA-256). Dialog if flagged</td></tr>
 <tr><td>Send</td><td>The site's send endpoint, or any POST/PUT whose text contains the marker</td><td>Dialog with about 40 characters either side of the marker</td></tr>
 <tr><td>Background</td><td>A GET whose URL carries the marker (typeahead while typing)</td><td>Blocked with no dialog: the marker never leaves, and the user isn't interrupted mid-sentence</td></tr>
 <tr><td>Quiet</td><td>Telemetry and analytics; in the live test both sites copied the prompt into these</td><td>Blocked with no dialog, unless the user already chose Continue for that text</td></tr>
@@ -259,7 +259,8 @@
     <li>recolouring under a nonce CSP;</li>
     <li>other sites going direct, and the AI sites failing closed when the app is down.</li>
   </ul></td></tr>
-<tr><td>Add-on</td><td>29</td><td>mitmproxy flows: dialog wording, file names (including ChatGPT's live upload flow), automatic upload retries, size limits, telemetry copies, recolouring and cache revalidation</td></tr>
+<tr><td>Add-on</td><td>34</td><td>mitmproxy flows: dialog wording, file names (including ChatGPT's live upload flows), automatic upload retries, size limits, telemetry copies, recolouring, cache revalidation and service-worker page fetches</td></tr>
+<tr><td>File naming</td><td>4</td><td>Matching an unnamed upload to the file on disk, with Spotlight replaced by a fixed list</td></tr>
 <tr><td>Units</td><td>37</td><td>Site rules, body parsing, CSP patching, PAC routing evaluated in Node, decision memory</td></tr>
 <tr><td>Installer</td><td>8</td><td>CA, PAC backup and restore, one admin prompt for all services, the login item. System tools are mocked</td></tr>
 <tr><td>Detectors + marker</td><td>33 + 30</td><td>Generated fixtures, including OCR, the tesseract fallback, encrypted and damaged PDFs</td></tr>
