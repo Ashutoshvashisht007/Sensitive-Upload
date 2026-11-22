@@ -42,6 +42,7 @@ log = logging.getLogger("upload_guard.proxy")
 BLOCK_MESSAGE = "Blocked by Sensitive Upload Guard. Nothing was sent."
 WRITE_METHODS = ("POST", "PUT", "PATCH")
 NAME_KEYS = ("file_name", "filename", "fileName", "name")
+SIZE_KEYS = ("file_size", "fileSize", "size", "content_length", "contentLength", "byte_size")
 NAME_TTL = 3600.0
 
 
@@ -51,6 +52,7 @@ class GuardAddon:
         self._fixed = config
         self._live = None if config else LiveConfig()
         self._names: dict[str, tuple[str, float]] = {}  # "host/path" of an upload URL → file name
+        self._by_size: dict[tuple[str, int], tuple[str, float]] = {}  # (site, announced size) → file name
 
     @property
     def config(self) -> Config:
@@ -102,6 +104,13 @@ class GuardAddon:
             name = bodies.find_key(data, NAME_KEYS) if data is not None else None
             if name and (site.is_setup(path) or "." in name):
                 flow.metadata["ug_setup_name"] = name
+                size = bodies.find_value(data, SIZE_KEYS)
+                if isinstance(size, (int, float)) or (isinstance(size, str) and size.isdigit()):
+                    self._by_size[(site.key, int(size))] = (name, time.monotonic())
+            if site.is_setup(path):
+                self._log_line({"site": site.key, "kind": "setup", "path": path,
+                                "fields": bodies.key_names(data) if data is not None else "not json",
+                                "name_found": bool(name)})
 
         files = self._files_in(flow, site, ctype, body)
         if files:
@@ -187,7 +196,7 @@ class GuardAddon:
                 files = [(os.path.basename(key_field), m, d) for _n, m, d in files]
             return files
         if host_matches(req.pretty_host, site.upload_hosts):
-            name = self._name_for(flow) or _guess_name(req.path)
+            name = self._name_for(flow) or self._name_by_size(site, len(body)) or _guess_name(req.path)
             return [(name, ctype, body)]
         return []
 
@@ -214,7 +223,11 @@ class GuardAddon:
             self._block(flow)
 
     def _learn_upload_urls(self, flow, name: str) -> None:
-        data = bodies.parse_json(flow.response.get_content(strict=False) or b"")
+        resp = flow.response
+        data = bodies.parse_json(resp.get_content(strict=False) or b"")
+        self._log_line({"kind": "setup-reply", "path": urlsplit(flow.request.path).path, "status": resp.status_code,
+                        "type": resp.headers.get("content-type", ""), "encoding": resp.headers.get("content-encoding", ""),
+                        "urls": [(urlsplit(u).hostname or "") + urlsplit(u).path for u in bodies.urls_in(data)] if data is not None else "not json"})
         if data is None:
             return
         routed = routed_host_patterns()
@@ -230,6 +243,13 @@ class GuardAddon:
     def _name_for(self, flow) -> str | None:
         req = flow.request
         hit = self._names.get(req.pretty_host.lower() + urlsplit(req.path).path)
+        if hit and time.monotonic() - hit[1] < NAME_TTL:
+            return hit[0]
+        return None
+
+    def _name_by_size(self, site: Site, size: int) -> str | None:
+        """Fallback: the file this site announced most recently with exactly this size."""
+        hit = self._by_size.get((site.key, size))
         if hit and time.monotonic() - hit[1] < NAME_TTL:
             return hit[0]
         return None

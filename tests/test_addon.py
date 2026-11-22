@@ -308,3 +308,17 @@ def test_question_typed_into_the_address_bar_asks():
     run(guard, f)
     assert f.response.status_code == 403 and b"Nothing was sent" in f.response.content
     assert "Your prompt to Perplexity" in dialog.shown[0].body
+
+
+def test_name_comes_from_announced_size_when_the_reply_has_no_url():
+    """Even if the set-up reply can't be read, the announced name + size identify the bytes."""
+    guard, dialog = make_guard("cancel")
+    data = (FIX / "marker.txt").read_bytes()
+    setup = flow("POST", "https://chatgpt.com/backend-api/files/upload_reservations",
+                 json.dumps({"file_name": "notes.txt", "file_size": len(data), "use_case": "my_files"}).encode())
+    run(guard, setup)
+    setup.response = http.Response.make(200, b'{"status": "ok"}', {"content-type": "application/json"})
+    guard.response(setup)
+    put = flow("PUT", "https://sdmntprukwest.oaiusercontent.com/files/0002/raw", data, {"content-type": "text/plain"})
+    run(guard, put)
+    assert dialog.shown[0].body.startswith("“notes.txt” (line 2)")

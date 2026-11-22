@@ -106,3 +106,32 @@ def find_key(data, keys: tuple[str, ...]) -> str | None:
 
 def urls_in(data) -> list[str]:
     return [s for s in json_strings(data) if s.startswith(("https://", "http://"))]
+
+
+def find_value(data, keys: tuple[str, ...]):
+    """First value (any type) whose key is one of `keys`, anywhere in a JSON document."""
+    stack = [data]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, dict):
+            for k, v in node.items():
+                if k in keys and v not in (None, ""):
+                    return v
+                stack.append(v)
+        elif isinstance(node, list):
+            stack.extend(node)
+    return None
+
+
+def key_names(data, limit: int = 40) -> list[str]:
+    """Field names only (never values), for troubleshooting logs."""
+    out, stack = [], [data]
+    while stack and len(out) < limit:
+        node = stack.pop()
+        if isinstance(node, dict):
+            for k, v in node.items():
+                out.append(str(k))
+                stack.append(v)
+        elif isinstance(node, list):
+            stack.extend(node)
+    return out
